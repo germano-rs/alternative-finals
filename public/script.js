@@ -2,10 +2,15 @@
 let globalData = [];
 let globalHeaders = [];
 let currentView = 'table';
+let isAutoRefreshEnabled = true;
+let refreshInterval = 30000; // 30 segundos por padrão
+let lastUpdateTime = null;
 
 // Função principal para carregar dados
-async function loadData() {
-    showLoading(true);
+async function loadData(showLoadingIndicator = true) {
+    if (showLoadingIndicator) {
+        showLoading(true);
+    }
     updateStatus('loading');
     
     try {
@@ -13,24 +18,112 @@ async function loadData() {
         const result = await response.json();
         
         if (result.success && result.data.length > 0) {
+            // Verifica se os dados mudaram
+            const dataChanged = JSON.stringify(result.data) !== JSON.stringify(globalData);
+            
             globalData = result.data;
             globalHeaders = result.headers;
             
-            updateStatistics();
-            renderData();
+            if (dataChanged) {
+                updateStatistics();
+                renderData();
+                showDataChangeNotification();
+            }
+            
             updateStatus('connected');
             showLoading(false);
+            lastUpdateTime = new Date();
             
             // Animação de sucesso
-            animateSuccess();
+            if (showLoadingIndicator) {
+                animateSuccess();
+            }
         } else {
             showEmpty();
             updateStatus('error');
         }
     } catch (error) {
         console.error('Erro ao carregar dados:', error);
-        showEmpty();
+        if (showLoadingIndicator) {
+            showEmpty();
+        }
         updateStatus('error');
+    }
+}
+
+// Função para mostrar notificação de mudança
+function showDataChangeNotification() {
+    const notification = document.createElement('div');
+    notification.className = 'data-notification';
+    notification.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+        <span>Dados atualizados!</span>
+    `;
+    notification.style.cssText = `
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+        z-index: 1000;
+        animation: slideInRight 0.3s ease, slideOutRight 0.3s ease 2.7s;
+    `;
+    notification.querySelector('svg').style.cssText = 'width: 18px; height: 18px;';
+    
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 3000);
+}
+
+// Função para auto-refresh inteligente
+function setupAutoRefresh() {
+    // Limpa intervalo anterior se existir
+    if (window.autoRefreshTimer) {
+        clearInterval(window.autoRefreshTimer);
+    }
+    
+    // Configura novo intervalo
+    window.autoRefreshTimer = setInterval(() => {
+        if (isAutoRefreshEnabled && !document.hidden) {
+            loadData(false); // Não mostra loading no auto-refresh
+            updateRefreshIndicator();
+        }
+    }, refreshInterval);
+    
+    // Atualiza mais rápido quando a aba está ativa
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            loadData(false); // Atualiza ao voltar para a aba
+        }
+    });
+}
+
+// Indicador visual do próximo refresh
+function updateRefreshIndicator() {
+    const indicator = document.getElementById('refreshIndicator');
+    if (indicator && lastUpdateTime) {
+        const nextRefresh = new Date(lastUpdateTime.getTime() + refreshInterval);
+        const now = new Date();
+        const secondsUntilRefresh = Math.max(0, Math.floor((nextRefresh - now) / 1000));
+        
+        indicator.textContent = `Próxima atualização em ${secondsUntilRefresh}s`;
+        
+        // Anima a barra de progresso
+        const progressBar = document.getElementById('refreshProgress');
+        if (progressBar) {
+            const progress = ((refreshInterval - (secondsUntilRefresh * 1000)) / refreshInterval) * 100;
+            progressBar.style.width = `${progress}%`;
+        }
     }
 }
 
@@ -70,7 +163,8 @@ function updateStatistics() {
     document.getElementById('totalColumns').textContent = globalHeaders.length;
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('pt-BR', {
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        second: '2-digit'
     });
 }
 
@@ -87,7 +181,7 @@ function updateStatus(status) {
             break;
         case 'loading':
             statusDot.style.background = 'var(--color-warning)';
-            statusText.textContent = 'Carregando...';
+            statusText.textContent = 'Atualizando...';
             statusText.style.color = 'var(--color-warning)';
             break;
         case 'error':
@@ -216,13 +310,53 @@ function printData() {
     window.print();
 }
 
+// Função para alterar intervalo de refresh
+function changeRefreshInterval(seconds) {
+    refreshInterval = seconds * 1000;
+    setupAutoRefresh();
+    
+    // Salva preferência no localStorage
+    localStorage.setItem('refreshInterval', refreshInterval);
+    
+    // Feedback visual
+    const notification = document.createElement('div');
+    notification.textContent = `Atualização automática: ${seconds}s`;
+    notification.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--color-primary);
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-size: 14px;
+        z-index: 1000;
+        animation: fadeInUp 0.3s ease;
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.remove(), 2000);
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    // Recupera preferências salvas
+    const savedInterval = localStorage.getItem('refreshInterval');
+    if (savedInterval) {
+        refreshInterval = parseInt(savedInterval);
+    }
+    
+    // Adiciona controles de refresh no HTML
+    addRefreshControls();
+    
     // Carregar dados ao iniciar
     loadData();
     
-    // Auto-refresh a cada 5 minutos
-    setInterval(loadData, 300000);
+    // Configura auto-refresh
+    setupAutoRefresh();
+    
+    // Atualiza indicador de refresh a cada segundo
+    setInterval(updateRefreshIndicator, 1000);
     
     // Busca em tempo real
     const searchInput = document.getElementById('searchInput');
@@ -244,6 +378,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     
+    // Atalhos de teclado
+    document.addEventListener('keydown', (e) => {
+        // F5 ou Ctrl+R para refresh manual
+        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+            e.preventDefault();
+            loadData();
+        }
+        
+        // Ctrl+E para exportar
+        if (e.ctrlKey && e.key === 'e') {
+            e.preventDefault();
+            exportData();
+        }
+    });
+    
     // Adicionar efeito de parallax suave ao scroll
     let ticking = false;
     function updateParallax() {
@@ -261,31 +410,61 @@ document.addEventListener('DOMContentLoaded', () => {
             ticking = true;
         }
     });
-    
-    // Adicionar feedback visual ao copiar
-    document.addEventListener('copy', () => {
-        const toast = document.createElement('div');
-        toast.textContent = 'Copiado!';
-        toast.style.cssText = `
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background: var(--color-success);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 1000;
-            animation: slideInRight 0.3s ease;
-        `;
-        document.body.appendChild(toast);
-        
-        setTimeout(() => {
-            toast.style.animation = 'slideOutRight 0.3s ease';
-            setTimeout(() => toast.remove(), 300);
-        }, 2000);
-    });
 });
+
+// Adiciona controles de refresh ao DOM
+function addRefreshControls() {
+    const controlsSection = document.querySelector('.controls-section');
+    
+    if (controlsSection && !document.getElementById('refreshControls')) {
+        const refreshControls = document.createElement('div');
+        refreshControls.id = 'refreshControls';
+        refreshControls.className = 'refresh-controls';
+        refreshControls.innerHTML = `
+            <div class="refresh-options">
+                <button class="refresh-option" onclick="changeRefreshInterval(10)" title="Muito Rápido">10s</button>
+                <button class="refresh-option active" onclick="changeRefreshInterval(30)" title="Rápido">30s</button>
+                <button class="refresh-option" onclick="changeRefreshInterval(60)" title="Normal">1m</button>
+                <button class="refresh-option" onclick="changeRefreshInterval(300)" title="Lento">5m</button>
+                <button class="refresh-option" onclick="toggleAutoRefresh()" title="Pausar/Retomar">
+                    <svg id="pauseIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="6" y="4" width="4" height="16"/>
+                        <rect x="14" y="4" width="4" height="16"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="refresh-status">
+                <div class="refresh-progress-bar">
+                    <div id="refreshProgress" class="refresh-progress"></div>
+                </div>
+                <span id="refreshIndicator" class="refresh-text">Próxima atualização em 30s</span>
+            </div>
+        `;
+        
+        controlsSection.appendChild(refreshControls);
+    }
+}
+
+// Função para pausar/retomar auto-refresh
+function toggleAutoRefresh() {
+    isAutoRefreshEnabled = !isAutoRefreshEnabled;
+    const pauseIcon = document.getElementById('pauseIcon');
+    
+    if (isAutoRefreshEnabled) {
+        pauseIcon.innerHTML = `
+            <rect x="6" y="4" width="4" height="16"/>
+            <rect x="14" y="4" width="4" height="16"/>
+        `;
+        setupAutoRefresh();
+    } else {
+        pauseIcon.innerHTML = `
+            <polygon points="5 3 19 12 5 21 5 3"/>
+        `;
+        clearInterval(window.autoRefreshTimer);
+        document.getElementById('refreshIndicator').textContent = 'Auto-refresh pausado';
+        document.getElementById('refreshProgress').style.width = '0%';
+    }
+}
 
 // Adicionar animações CSS dinamicamente
 const style = document.createElement('style');
@@ -310,6 +489,93 @@ style.textContent = `
             transform: translateX(100%);
             opacity: 0;
         }
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .refresh-controls {
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+        padding: 1rem;
+        background: rgba(39, 39, 42, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        margin-top: 1rem;
+    }
+    
+    .refresh-options {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .refresh-option {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        color: var(--color-text-secondary);
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: var(--transition);
+    }
+    
+    .refresh-option:hover {
+        background: rgba(99, 102, 241, 0.1);
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+    
+    .refresh-option.active {
+        background: var(--color-primary);
+        border-color: var(--color-primary);
+        color: white;
+    }
+    
+    .refresh-option svg {
+        width: 16px;
+        height: 16px;
+    }
+    
+    .refresh-status {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .refresh-progress-bar {
+        width: 100%;
+        height: 4px;
+        background: var(--color-border);
+        border-radius: 2px;
+        overflow: hidden;
+    }
+    
+    .refresh-progress {
+        height: 100%;
+        background: var(--gradient-primary);
+        border-radius: 2px;
+        transition: width 1s linear;
+    }
+    
+    .refresh-text {
+        font-size: 0.85rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .data-notification {
+        animation-fill-mode: forwards;
     }
 `;
 document.head.appendChild(style);
