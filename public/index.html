@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Viewer - Visualização Dinâmica</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Efeito de fundo animado -->
+    <div class="background-effect">
+        <div class="grid-pattern"></div>
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
+
+    <!-- Header principal -->
+    <header class="main-header">
+        <div class="header-content">
+            <div class="logo-section">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <line x1="9" y1="9" x2="15" y2="9"/>
+                        <line x1="9" y1="15" x2="15" y2="15"/>
+                    </svg>
+                </div>
+                <h1 class="logo-text">DataView<span class="accent">Pro</span></h1>
+            </div>
+            
+            <div class="header-actions">
+                <button class="refresh-btn" onclick="loadData()">
+                    <svg class="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                    <span>Atualizar</span>
+                </button>
+                
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Conectado</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Container principal -->
+    <main class="main-container">
+        <!-- Estatísticas -->
+        <section class="stats-section">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="totalRecords">0</div>
+                    <div class="stat-label">Registros</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/>
+                        <rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/>
+                        <rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="totalColumns">0</div>
+                    <div class="stat-label">Colunas</div>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                </div>
+                <div class="stat-info">
+                    <div class="stat-value" id="lastUpdate">--:--</div>
+                    <div class="stat-label">Última Atualização</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Controles de visualização -->
+        <section class="controls-section">
+            <div class="search-container">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="searchInput" placeholder="Buscar nos dados..." class="search-input">
+            </div>
+            
+            <div class="view-toggles">
+                <button class="view-btn active" data-view="table">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <line x1="3" y1="9" x2="21" y2="9"/>
+                        <line x1="3" y1="15" x2="21" y2="15"/>
+                        <line x1="9" y1="3" x2="9" y2="21"/>
+                    </svg>
+                    Tabela
+                </button>
+                <button class="view-btn" data-view="cards">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="2" width="9" height="9" rx="1"/>
+                        <rect x="13" y="2" width="9" height="9" rx="1"/>
+                        <rect x="2" y="13" width="9" height="9" rx="1"/>
+                        <rect x="13" y="13" width="9" height="9" rx="1"/>
+                    </svg>
+                    Cards
+                </button>
+            </div>
+        </section>
+
+        <!-- Container de dados -->
+        <section class="data-section">
+            <!-- Loading state -->
+            <div class="loading-container" id="loadingContainer">
+                <div class="loading-spinner">
+                    <div class="spinner-ring"></div>
+                    <div class="spinner-ring"></div>
+                    <div class="spinner-ring"></div>
+                </div>
+                <p class="loading-text">Carregando dados...</p>
+            </div>
+
+            <!-- Visualização em tabela -->
+            <div class="data-view" id="tableView">
+                <div class="table-container">
+                    <table id="dataTable" class="data-table">
+                        <thead id="tableHeader"></thead>
+                        <tbody id="tableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Visualização em cards -->
+            <div class="data-view hidden" id="cardsView">
+                <div class="cards-grid" id="cardsContainer"></div>
+            </div>
+
+            <!-- Estado vazio -->
+            <div class="empty-state hidden" id="emptyState">
+                <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M20 21H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1Z"/>
+                    <path d="M9 12h6M12 9v6"/>
+                </svg>
+                <h3 class="empty-title">Nenhum dado encontrado</h3>
+                <p class="empty-text">Verifique sua conexão ou tente novamente</p>
+                <button class="empty-retry" onclick="loadData()">Tentar Novamente</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+        <div class="footer-content">
+            <p>Dados sincronizados com Google Sheets</p>
+            <div class="footer-links">
+                <a href="#" onclick="exportData()">Exportar JSON</a>
+                <span class="separator">•</span>
+                <a href="#" onclick="printData()">Imprimir</a>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
