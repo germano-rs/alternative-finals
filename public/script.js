@@ -9,6 +9,7 @@ let isAutoRefreshEnabled = true;
 let refreshInterval = REFRESH_INTERVAL_SECONDS * 1000;
 let lastUpdateTime = null;
 let showOnlyLiveGames = false;
+let dateFilter = 'all';
 
 // Função principal para carregar dados
 async function loadData(showLoadingIndicator = true) {
@@ -238,6 +239,10 @@ function renderData() {
         filteredData = filterLiveGames(filteredData);
     }
     
+    if (dateFilter !== 'all') {
+        filteredData = filterByDate(filteredData, dateFilter);
+    }
+    
     const tableView = document.getElementById('tableView');
     const cardsView = document.getElementById('cardsView');
     const loadingContainer = document.getElementById('loadingContainer');
@@ -306,6 +311,122 @@ function toggleLiveFilter() {
     }
     
     renderData();
+}
+
+// Função para filtrar jogos por data
+function filterByDate(data, filterType) {
+    if (!data || data.length === 0) {
+        return [];
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let endDate = new Date();
+    
+    switch(filterType) {
+        case 'today':
+            endDate = new Date(today);
+            endDate.setDate(endDate.getDate() + 1);
+            break;
+        case 'next3days':
+            endDate = new Date(today);
+            endDate.setDate(endDate.getDate() + 3);
+            break;
+        case 'next7days':
+            endDate = new Date(today);
+            endDate.setDate(endDate.getDate() + 7);
+            break;
+        default:
+            return data;
+    }
+    
+    return data.filter(row => {
+        if (!row) {
+            return false;
+        }
+        
+        for (const key in row) {
+            const keyLower = key ? key.toLowerCase().trim() : '';
+            if (keyLower.includes('data') && !keyLower.includes('hora')) {
+                const dateValue = row[key];
+                if (!dateValue || String(dateValue).trim() === '') {
+                    return false;
+                }
+                
+                const gameDate = parseDate(String(dateValue).trim());
+                if (!gameDate) {
+                    return false;
+                }
+                
+                gameDate.setHours(0, 0, 0, 0);
+                
+                if (filterType === 'today') {
+                    return gameDate.getTime() === today.getTime();
+                } else {
+                    return gameDate >= today && gameDate < endDate;
+                }
+            }
+        }
+        
+        return false;
+    });
+}
+
+// Função para fazer parse de data em diferentes formatos
+function parseDate(dateString) {
+    if (!dateString) {
+        return null;
+    }
+    
+    const formats = [
+        /^(\d{2})\/(\d{2})\/(\d{2,4})$/,  // DD/MM/YY ou DD/MM/YYYY
+        /^(\d{4})-(\d{2})-(\d{2})$/,      // YYYY-MM-DD
+        /^(\d{2})-(\d{2})-(\d{4})$/,      // DD-MM-YYYY
+    ];
+    
+    for (const format of formats) {
+        const match = dateString.match(format);
+        if (match) {
+            if (format === formats[0]) {
+                const day = parseInt(match[1], 10);
+                const month = parseInt(match[2], 10) - 1;
+                let year = parseInt(match[3], 10);
+                
+                if (year < 100) {
+                    year += 2000;
+                }
+                
+                return new Date(year, month, day);
+            } else if (format === formats[1]) {
+                const year = parseInt(match[1], 10);
+                const month = parseInt(match[2], 10) - 1;
+                const day = parseInt(match[3], 10);
+                return new Date(year, month, day);
+            } else if (format === formats[2]) {
+                const day = parseInt(match[1], 10);
+                const month = parseInt(match[2], 10) - 1;
+                const year = parseInt(match[3], 10);
+                return new Date(year, month, day);
+            }
+        }
+    }
+    
+    const parsed = new Date(dateString);
+    if (!isNaN(parsed.getTime())) {
+        return parsed;
+    }
+    
+    return null;
+}
+
+// Função para aplicar filtro de data
+function applyDateFilter() {
+    const dateFilterSelect = document.getElementById('dateFilterSelect');
+    if (dateFilterSelect) {
+        dateFilter = dateFilterSelect.value;
+        renderData();
+    }
 }
 
 // Função para encontrar índice real na planilha

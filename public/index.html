@@ -141,6 +141,13 @@
                     </svg>
                     <span>Jogos ao Vivo</span>
                 </button>
+                
+                <select class="date-filter-select" id="dateFilterSelect" onchange="applyDateFilter()">
+                    <option value="all">Todos os jogos</option>
+                    <option value="today">Hoje</option>
+                    <option value="next3days">Próximos 3 dias</option>
+                    <option value="next7days">Próximos 7 dias</option>
+                </select>
             </div>
         </section>
 

@@ -520,6 +520,37 @@ body {
     height: 18px;
 }
 
+.date-filter-select {
+    padding: 0.625rem 1rem;
+    background: rgba(39, 39, 42, 0.5);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-left: 0.5rem;
+    min-width: 160px;
+}
+
+.date-filter-select:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.date-filter-select:hover {
+    border-color: var(--color-border-light);
+    background: rgba(39, 39, 42, 0.7);
+}
+
+.date-filter-select option {
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+}
+
 /* Seção de dados */
 .data-section {
     background: rgba(39, 39, 42, 0.3);
