@@ -256,6 +256,38 @@ function renderData() {
     }
 }
 
+// Função para encontrar índice real na planilha
+function findRealRowIndex(rowData) {
+    if (!globalData || !rowData) {
+        return -1;
+    }
+    
+    for (let i = 0; i < globalData.length; i++) {
+        const globalRow = globalData[i];
+        let match = true;
+        let hasMatch = false;
+        
+        for (const key in rowData) {
+            if (rowData[key] && String(rowData[key]).trim() !== '') {
+                hasMatch = true;
+                const rowValue = String(rowData[key]).trim();
+                const globalValue = globalRow[key] ? String(globalRow[key]).trim() : '';
+                
+                if (rowValue !== globalValue) {
+                    match = false;
+                    break;
+                }
+            }
+        }
+        
+        if (match && hasMatch) {
+            return i + 2;
+        }
+    }
+    
+    return -1;
+}
+
 // Função para filtrar dados
 function filterData(searchTerm) {
     if (!globalData || globalData.length === 0) {
@@ -321,6 +353,18 @@ function renderTable(data) {
         data.forEach((row, index) => {
             const tr = document.createElement('tr');
             tr.style.animationDelay = `${index * 0.02}s`;
+            tr.style.cursor = 'pointer';
+            tr.classList.add('table-row-clickable');
+            tr.dataset.rowIndex = index;
+            
+            const originalRowData = data[index];
+            
+            tr.addEventListener('click', () => {
+                const realRowIndex = findRealRowIndex(originalRowData);
+                if (realRowIndex > 0) {
+                    showAuthModalForEdit(originalRowData, realRowIndex);
+                }
+            });
             
             orderedHeaders.forEach(header => {
                 const td = document.createElement('td');
@@ -516,18 +560,35 @@ function closeAuthModal() {
 function validateAuth() {
     const password = document.getElementById('authPassword').value;
     const errorSpan = document.getElementById('authError');
+    const authCallback = window.pendingAuthCallback;
     
     if (password === '123456@') {
         closeAuthModal();
-        setTimeout(() => {
-            showAddGameModal();
-        }, 300);
+        if (authCallback) {
+            setTimeout(() => {
+                authCallback();
+                window.pendingAuthCallback = null;
+            }, 300);
+        } else {
+            setTimeout(() => {
+                showAddGameModal();
+            }, 300);
+        }
     } else {
         errorSpan.textContent = 'Senha incorreta';
         errorSpan.classList.remove('hidden');
         document.getElementById('authPassword').value = '';
         document.getElementById('authPassword').focus();
     }
+}
+
+// Função para mostrar modal de autenticação para edição
+function showAuthModalForEdit(rowData, rowIndex) {
+    window.pendingAuthCallback = () => {
+        showEditGameModal(rowData, rowIndex);
+    };
+    window.pendingRowIndex = rowIndex;
+    showAuthModal();
 }
 
 // Função para mostrar modal de cadastro de jogo
@@ -641,6 +702,168 @@ function closeAddGameModal() {
     }
 }
 
+// Função para mostrar modal de edição de jogo
+function showEditGameModal(rowData, rowIndex) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'editGameModalOverlay';
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-container modal-large';
+    modal.innerHTML = `
+        <div class="modal-header">
+            <h2 class="modal-title">Editar Jogo</h2>
+            <button class="modal-close" onclick="closeEditGameModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="editGameForm" onsubmit="submitEditGame(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editFase" class="form-label">Fase *</label>
+                        <select id="editFase" class="form-select" required>
+                            <option value="">Selecione a fase</option>
+                            <option value="SEMIS">SEMIS</option>
+                            <option value="FINAL">FINAL</option>
+                            <option value="OITAVAS - Lado #1">OITAVAS - Lado #1</option>
+                            <option value="OITAVAS - Lado #2">OITAVAS - Lado #2</option>
+                            <option value="QUARTAS">QUARTAS</option>
+                            <option value="PRELIMINAR">PRELIMINAR</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editJogo" class="form-label">Jogo *</label>
+                        <input type="text" id="editJogo" class="form-input" required placeholder="Ex: Jogo 1">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editConfronto" class="form-label">Confronto *</label>
+                    <input type="text" id="editConfronto" class="form-input" required placeholder="Ex: Time A vs Time B">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="editData" class="form-label">Data *</label>
+                        <input type="date" id="editData" class="form-input" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editDia" class="form-label">Dia *</label>
+                        <input type="text" id="editDia" class="form-input" required placeholder="Ex: Segunda-feira">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="editHorario" class="form-label">Horário *</label>
+                        <input type="time" id="editHorario" class="form-input" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editQuadra" class="form-label">Quadra *</label>
+                    <select id="editQuadra" class="form-select" required>
+                        <option value="">Selecione a quadra</option>
+                        <option value="Saibro">Saibro</option>
+                        <option value="AABB">AABB</option>
+                        <option value="Jabuticabas">Jabuticabas</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editPlacarVivo" class="form-label">Placar ao Vivo</label>
+                    <input type="text" id="editPlacarVivo" class="form-input" placeholder="Ex: 3x2">
+                </div>
+                
+                <div id="editFormError" class="form-error hidden"></div>
+                <div id="editFormSuccess" class="form-success hidden"></div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="closeEditGameModal()">Cancelar</button>
+            <button type="submit" form="editGameForm" class="btn-primary" id="editSubmitBtn">
+                <span id="editSubmitBtnText">Salvar</span>
+                <span id="editSubmitBtnLoader" class="btn-loader hidden"></span>
+            </button>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    setTimeout(() => {
+        const headerLower = (header) => header ? header.toLowerCase().trim() : '';
+        
+        if (rowData) {
+            Object.keys(rowData).forEach(key => {
+                const keyLower = headerLower(key);
+                
+                if (keyLower.includes('fase')) {
+                    const faseInput = document.getElementById('editFase');
+                    if (faseInput) faseInput.value = rowData[key] || '';
+                } else if (keyLower.includes('jogo')) {
+                    const jogoInput = document.getElementById('editJogo');
+                    if (jogoInput) jogoInput.value = rowData[key] || '';
+                } else if (keyLower.includes('confronto')) {
+                    const confrontoInput = document.getElementById('editConfronto');
+                    if (confrontoInput) confrontoInput.value = rowData[key] || '';
+                } else if (keyLower.includes('data') && !keyLower.includes('hora')) {
+                    const dateValue = rowData[key] || '';
+                    const dataInput = document.getElementById('editData');
+                    if (dataInput && dateValue) {
+                        const date = new Date(dateValue);
+                        if (!isNaN(date.getTime())) {
+                            dataInput.value = date.toISOString().split('T')[0];
+                        } else {
+                            dataInput.value = dateValue;
+                        }
+                    }
+                } else if (keyLower.includes('dia')) {
+                    const diaInput = document.getElementById('editDia');
+                    if (diaInput) diaInput.value = rowData[key] || '';
+                } else if (keyLower.includes('horário') || keyLower.includes('horario')) {
+                    const timeValue = rowData[key] || '';
+                    const horarioInput = document.getElementById('editHorario');
+                    if (horarioInput && timeValue) {
+                        horarioInput.value = timeValue;
+                    }
+                } else if (keyLower.includes('quadra')) {
+                    const quadraInput = document.getElementById('editQuadra');
+                    if (quadraInput) quadraInput.value = rowData[key] || '';
+                } else if (keyLower.includes('placar') && keyLower.includes('vivo')) {
+                    const placarVivoInput = document.getElementById('editPlacarVivo');
+                    if (placarVivoInput) placarVivoInput.value = rowData[key] || '';
+                }
+            });
+        }
+        
+        overlay.classList.add('active');
+        const faseInput = document.getElementById('editFase');
+        if (faseInput) faseInput.focus();
+    }, 10);
+    
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            closeEditGameModal();
+        }
+    });
+}
+
+// Função para fechar modal de edição
+function closeEditGameModal() {
+    const overlay = document.getElementById('editGameModalOverlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        setTimeout(() => {
+            overlay.remove();
+        }, 300);
+    }
+}
+
 // Função para submeter formulário de jogo
 async function submitGame(event) {
     event.preventDefault();
@@ -699,6 +922,81 @@ async function submitGame(event) {
         formError.classList.remove('hidden');
         submitBtn.disabled = false;
         submitBtnText.textContent = 'Adicionar';
+        submitBtnLoader.classList.add('hidden');
+    }
+}
+
+// Função para submeter edição de jogo
+async function submitEditGame(event) {
+    event.preventDefault();
+    
+    const submitBtn = document.getElementById('editSubmitBtn');
+    const submitBtnText = document.getElementById('editSubmitBtnText');
+    const submitBtnLoader = document.getElementById('editSubmitBtnLoader');
+    const formError = document.getElementById('editFormError');
+    const formSuccess = document.getElementById('editFormSuccess');
+    
+    formError.classList.add('hidden');
+    formSuccess.classList.add('hidden');
+    
+    const rowIndex = window.pendingRowIndex;
+    
+    if (!rowIndex) {
+        formError.textContent = 'Erro: índice da linha não encontrado';
+        formError.classList.remove('hidden');
+        return;
+    }
+    
+    const gameData = {
+        fase: document.getElementById('editFase').value.trim(),
+        jogo: document.getElementById('editJogo').value.trim(),
+        confronto: document.getElementById('editConfronto').value.trim(),
+        data: document.getElementById('editData').value,
+        dia: document.getElementById('editDia').value.trim(),
+        horario: document.getElementById('editHorario').value,
+        quadra: document.getElementById('editQuadra').value.trim(),
+        placarVivo: document.getElementById('editPlacarVivo').value.trim()
+    };
+    
+    submitBtn.disabled = true;
+    submitBtnText.textContent = 'Salvando...';
+    submitBtnLoader.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/api/update-game', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                rowIndex: rowIndex,
+                ...gameData
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            formSuccess.textContent = 'Jogo atualizado com sucesso!';
+            formSuccess.classList.remove('hidden');
+            
+            setTimeout(() => {
+                closeEditGameModal();
+                window.pendingRowIndex = null;
+                loadData();
+            }, 1500);
+        } else {
+            formError.textContent = result.error || 'Erro ao atualizar jogo';
+            formError.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtnText.textContent = 'Salvar';
+            submitBtnLoader.classList.add('hidden');
+        }
+    } catch (error) {
+        formError.textContent = 'Erro de conexão. Tente novamente.';
+        formError.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtnText.textContent = 'Salvar';
         submitBtnLoader.classList.add('hidden');
     }
 }
@@ -1121,6 +1419,15 @@ style.textContent = `
     
     .hidden {
         display: none !important;
+    }
+    
+    .table-row-clickable {
+        transition: var(--transition);
+    }
+    
+    .table-row-clickable:hover {
+        background: rgba(99, 102, 241, 0.1) !important;
+        transform: translateX(4px);
     }
 `;
 document.head.appendChild(style);

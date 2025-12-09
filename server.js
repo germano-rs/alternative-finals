@@ -293,6 +293,120 @@ app.post('/api/add-game', async (req, res) => {
     }
 });
 
+// Função para atualizar jogo na planilha
+async function updateGameInSheet(rowIndex, gameData) {
+    try {
+        const sheetData = await getSheetData();
+        const headers = sheetData.headers;
+        
+        if (!headers || headers.length === 0) {
+            throw new Error('Não foi possível obter os cabeçalhos da planilha');
+        }
+
+        const sheets = google.sheets({ 
+            version: 'v4',
+            auth: auth
+        });
+
+        const values = headers.map(header => {
+            const headerLower = header ? header.toLowerCase().trim() : '';
+            
+            if (headerLower.includes('fase')) {
+                return gameData.fase || '';
+            } else if (headerLower.includes('jogo')) {
+                return gameData.jogo || '';
+            } else if (headerLower.includes('confronto')) {
+                return gameData.confronto || '';
+            } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
+                return gameData.data || '';
+            } else if (headerLower.includes('dia')) {
+                return gameData.dia || '';
+            } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
+                return gameData.horario || '';
+            } else if (headerLower.includes('quadra')) {
+                return gameData.quadra || '';
+            } else if (headerLower.includes('placar') && headerLower.includes('vivo')) {
+                return gameData.placarVivo || '';
+            } else {
+                return '';
+            }
+        });
+
+        const range = `${rowIndex}:${rowIndex}`;
+
+        const response = await sheets.spreadsheets.values.update({
+            spreadsheetId: SPREADSHEET_ID,
+            range: range,
+            valueInputOption: 'USER_ENTERED',
+            resource: {
+                values: [values]
+            }
+        });
+
+        memoryCache.data = null;
+        memoryCache.timestamp = null;
+
+        return {
+            success: true,
+            updatedCells: response.data.updatedCells || 0
+        };
+    } catch (error) {
+        console.error('Erro ao atualizar jogo:', error);
+        throw error;
+    }
+}
+
+// Rota para atualizar jogo
+app.post('/api/update-game', async (req, res) => {
+    try {
+        const { rowIndex, fase, jogo, confronto, data, dia, horario, quadra, placarVivo } = req.body;
+
+        if (!rowIndex || !fase || !jogo || !confronto || !data || !dia || !horario || !quadra) {
+            return res.status(400).json({
+                success: false,
+                error: 'Todos os campos são obrigatórios'
+            });
+        }
+
+        const gameData = {
+            fase: String(fase).trim(),
+            jogo: String(jogo).trim(),
+            confronto: String(confronto).trim(),
+            data: String(data).trim(),
+            dia: String(dia).trim(),
+            horario: String(horario).trim(),
+            quadra: String(quadra).trim(),
+            placarVivo: placarVivo ? String(placarVivo).trim() : ''
+        };
+
+        const result = await updateGameInSheet(parseInt(rowIndex), gameData);
+
+        res.json({
+            success: true,
+            message: 'Jogo atualizado com sucesso',
+            data: result
+        });
+    } catch (error) {
+        console.error('Erro na API ao atualizar jogo:', error);
+        
+        let errorMessage = 'Erro ao atualizar jogo na planilha';
+        
+        if (error.code === 403) {
+            errorMessage = 'Permissão negada. Verifique as credenciais da API.';
+        } else if (error.code === 400) {
+            errorMessage = 'Dados inválidos. Verifique os campos enviados.';
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+
+        res.status(500).json({
+            success: false,
+            error: errorMessage,
+            message: error.message
+        });
+    }
+});
+
 // Iniciar servidor
 app.listen(PORT, () => {
     console.log(`
