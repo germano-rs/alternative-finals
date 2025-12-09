@@ -8,6 +8,7 @@ let currentView = 'table';
 let isAutoRefreshEnabled = true;
 let refreshInterval = REFRESH_INTERVAL_SECONDS * 1000;
 let lastUpdateTime = null;
+let showOnlyLiveGames = false;
 
 // Função principal para carregar dados
 async function loadData(showLoadingIndicator = true) {
@@ -231,7 +232,11 @@ function renderData() {
     
     const searchInput = document.getElementById('searchInput');
     const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase() : '';
-    const filteredData = filterData(searchTerm);
+    let filteredData = filterData(searchTerm);
+    
+    if (showOnlyLiveGames) {
+        filteredData = filterLiveGames(filteredData);
+    }
     
     const tableView = document.getElementById('tableView');
     const cardsView = document.getElementById('cardsView');
@@ -241,6 +246,14 @@ function renderData() {
     if (loadingContainer) {
         loadingContainer.classList.add('hidden');
     }
+    
+    if (filteredData.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (tableView) tableView.classList.add('hidden');
+        if (cardsView) cardsView.classList.add('hidden');
+        return;
+    }
+    
     if (emptyState) {
         emptyState.classList.add('hidden');
     }
@@ -254,6 +267,45 @@ function renderData() {
         if (cardsView) cardsView.classList.remove('hidden');
         if (tableView) tableView.classList.add('hidden');
     }
+}
+
+// Função para filtrar apenas jogos ao vivo
+function filterLiveGames(data) {
+    if (!data || data.length === 0) {
+        return [];
+    }
+    
+    return data.filter(row => {
+        if (!row) {
+            return false;
+        }
+        
+        for (const key in row) {
+            const keyLower = key ? key.toLowerCase().trim() : '';
+            if (keyLower.includes('placar') && keyLower.includes('vivo')) {
+                const value = row[key];
+                return value && String(value).trim() !== '' && String(value).trim() !== '-';
+            }
+        }
+        
+        return false;
+    });
+}
+
+// Função para alternar filtro de jogos ao vivo
+function toggleLiveFilter() {
+    showOnlyLiveGames = !showOnlyLiveGames;
+    const liveFilterBtn = document.getElementById('liveFilterBtn');
+    
+    if (liveFilterBtn) {
+        if (showOnlyLiveGames) {
+            liveFilterBtn.classList.add('active');
+        } else {
+            liveFilterBtn.classList.remove('active');
+        }
+    }
+    
+    renderData();
 }
 
 // Função para encontrar índice real na planilha
