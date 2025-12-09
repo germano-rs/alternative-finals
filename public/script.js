@@ -15,18 +15,24 @@ async function loadData(showLoadingIndicator = true) {
     
     try {
         const response = await fetch('/api/data');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const result = await response.json();
         
-        if (result.success && result.data.length > 0) {
-            // Verifica se os dados mudaram
+        if (result.success && result.data && result.data.length > 0) {
             const dataChanged = JSON.stringify(result.data) !== JSON.stringify(globalData);
+            const isFirstLoad = globalData.length === 0;
             
             globalData = result.data;
             globalHeaders = result.headers;
             
-            if (dataChanged) {
-                updateStatistics();
-                renderData();
+            updateStatistics();
+            renderData();
+            
+            if (dataChanged && !isFirstLoad) {
                 showDataChangeNotification();
             }
             
@@ -34,19 +40,17 @@ async function loadData(showLoadingIndicator = true) {
             showLoading(false);
             lastUpdateTime = new Date();
             
-            // Animação de sucesso
             if (showLoadingIndicator) {
                 animateSuccess();
             }
         } else {
+            showLoading(false);
             showEmpty();
             updateStatus('error');
         }
     } catch (error) {
-        console.error('Erro ao carregar dados:', error);
-        if (showLoadingIndicator) {
-            showEmpty();
-        }
+        showLoading(false);
+        showEmpty();
         updateStatus('error');
     }
 }
@@ -134,11 +138,15 @@ function showLoading(show) {
     const cardsView = document.getElementById('cardsView');
     const emptyState = document.getElementById('emptyState');
     
+    if (!loadingContainer) {
+        return;
+    }
+    
     if (show) {
         loadingContainer.classList.remove('hidden');
-        tableView.classList.add('hidden');
-        cardsView.classList.add('hidden');
-        emptyState.classList.add('hidden');
+        if (tableView) tableView.classList.add('hidden');
+        if (cardsView) cardsView.classList.add('hidden');
+        if (emptyState) emptyState.classList.add('hidden');
     } else {
         loadingContainer.classList.add('hidden');
     }
@@ -151,27 +159,41 @@ function showEmpty() {
     const cardsView = document.getElementById('cardsView');
     const emptyState = document.getElementById('emptyState');
     
-    loadingContainer.classList.add('hidden');
-    tableView.classList.add('hidden');
-    cardsView.classList.add('hidden');
-    emptyState.classList.remove('hidden');
+    if (loadingContainer) loadingContainer.classList.add('hidden');
+    if (tableView) tableView.classList.add('hidden');
+    if (cardsView) cardsView.classList.add('hidden');
+    if (emptyState) emptyState.classList.remove('hidden');
 }
 
 // Função para atualizar estatísticas
 function updateStatistics() {
-    document.getElementById('totalRecords').textContent = globalData.length;
-    document.getElementById('totalColumns').textContent = globalHeaders.length;
-    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-    });
+    const totalRecordsEl = document.getElementById('totalRecords');
+    const totalColumnsEl = document.getElementById('totalColumns');
+    const lastUpdateEl = document.getElementById('lastUpdate');
+    
+    if (totalRecordsEl && globalData) {
+        totalRecordsEl.textContent = globalData.length || 0;
+    }
+    if (totalColumnsEl && globalHeaders) {
+        totalColumnsEl.textContent = globalHeaders.length || 0;
+    }
+    if (lastUpdateEl) {
+        lastUpdateEl.textContent = new Date().toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
 }
 
 // Função para atualizar status de conexão
 function updateStatus(status) {
     const statusDot = document.querySelector('.status-dot');
     const statusText = document.querySelector('.status-text');
+    
+    if (!statusDot || !statusText) {
+        return;
+    }
     
     switch(status) {
         case 'connected':
@@ -194,27 +216,53 @@ function updateStatus(status) {
 
 // Função para renderizar dados
 function renderData() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+    if (!globalData || globalData.length === 0) {
+        return;
+    }
+    
+    const searchInput = document.getElementById('searchInput');
+    const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase() : '';
     const filteredData = filterData(searchTerm);
+    
+    const tableView = document.getElementById('tableView');
+    const cardsView = document.getElementById('cardsView');
+    const loadingContainer = document.getElementById('loadingContainer');
+    const emptyState = document.getElementById('emptyState');
+    
+    if (loadingContainer) {
+        loadingContainer.classList.add('hidden');
+    }
+    if (emptyState) {
+        emptyState.classList.add('hidden');
+    }
     
     if (currentView === 'table') {
         renderTable(filteredData);
-        document.getElementById('tableView').classList.remove('hidden');
-        document.getElementById('cardsView').classList.add('hidden');
+        if (tableView) tableView.classList.remove('hidden');
+        if (cardsView) cardsView.classList.add('hidden');
     } else {
         renderCards(filteredData);
-        document.getElementById('cardsView').classList.remove('hidden');
-        document.getElementById('tableView').classList.add('hidden');
+        if (cardsView) cardsView.classList.remove('hidden');
+        if (tableView) tableView.classList.add('hidden');
     }
 }
 
 // Função para filtrar dados
 function filterData(searchTerm) {
-    if (!searchTerm) return globalData;
+    if (!globalData || globalData.length === 0) {
+        return [];
+    }
+    
+    if (!searchTerm) {
+        return globalData;
+    }
     
     return globalData.filter(row => {
+        if (!row) {
+            return false;
+        }
         return Object.values(row).some(value => 
-            String(value).toLowerCase().includes(searchTerm)
+            value !== null && value !== undefined && String(value).toLowerCase().includes(searchTerm)
         );
     });
 }
@@ -224,63 +272,73 @@ function renderTable(data) {
     const tableHeader = document.getElementById('tableHeader');
     const tableBody = document.getElementById('tableBody');
     
-    // Limpar conteúdo anterior
+    if (!tableHeader || !tableBody || !globalHeaders || globalHeaders.length === 0) {
+        return;
+    }
+    
     tableHeader.innerHTML = '';
     tableBody.innerHTML = '';
     
-    // Criar cabeçalho
     const headerRow = document.createElement('tr');
     globalHeaders.forEach(header => {
         const th = document.createElement('th');
-        th.textContent = header;
+        th.textContent = header || '';
         headerRow.appendChild(th);
     });
     tableHeader.appendChild(headerRow);
     
-    // Criar linhas de dados
-    data.forEach((row, index) => {
-        const tr = document.createElement('tr');
-        tr.style.animationDelay = `${index * 0.02}s`;
-        
-        globalHeaders.forEach(header => {
-            const td = document.createElement('td');
-            td.textContent = row[header] || '';
-            tr.appendChild(td);
+    if (data && data.length > 0) {
+        data.forEach((row, index) => {
+            const tr = document.createElement('tr');
+            tr.style.animationDelay = `${index * 0.02}s`;
+            
+            globalHeaders.forEach(header => {
+                const td = document.createElement('td');
+                td.textContent = row && row[header] !== undefined ? String(row[header]) : '';
+                tr.appendChild(td);
+            });
+            
+            tableBody.appendChild(tr);
         });
-        
-        tableBody.appendChild(tr);
-    });
+    }
 }
 
 // Função para renderizar cards
 function renderCards(data) {
     const cardsContainer = document.getElementById('cardsContainer');
+    
+    if (!cardsContainer || !globalHeaders || globalHeaders.length === 0) {
+        return;
+    }
+    
     cardsContainer.innerHTML = '';
     
-    data.forEach((row, index) => {
-        const card = document.createElement('div');
-        card.className = 'data-card';
-        card.style.setProperty('--card-index', index);
-        
-        globalHeaders.forEach(header => {
-            const field = document.createElement('div');
-            field.className = 'card-field';
+    if (data && data.length > 0) {
+        data.forEach((row, index) => {
+            const card = document.createElement('div');
+            card.className = 'data-card';
+            card.style.setProperty('--card-index', index);
             
-            const label = document.createElement('div');
-            label.className = 'card-label';
-            label.textContent = header;
+            globalHeaders.forEach(header => {
+                const field = document.createElement('div');
+                field.className = 'card-field';
+                
+                const label = document.createElement('div');
+                label.className = 'card-label';
+                label.textContent = header || '';
+                
+                const value = document.createElement('div');
+                value.className = 'card-value';
+                value.textContent = row && row[header] !== undefined ? String(row[header]) : '-';
+                
+                field.appendChild(label);
+                field.appendChild(value);
+                card.appendChild(field);
+            });
             
-            const value = document.createElement('div');
-            value.className = 'card-value';
-            value.textContent = row[header] || '-';
-            
-            field.appendChild(label);
-            field.appendChild(value);
-            card.appendChild(field);
+            cardsContainer.appendChild(card);
         });
-        
-        cardsContainer.appendChild(card);
-    });
+    }
 }
 
 // Função para animação de sucesso
@@ -340,43 +398,39 @@ function changeRefreshInterval(seconds) {
 
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    // Recupera preferências salvas
     const savedInterval = localStorage.getItem('refreshInterval');
     if (savedInterval) {
         refreshInterval = parseInt(savedInterval);
     }
     
-    // Adiciona controles de refresh no HTML
     addRefreshControls();
     
-    // Carregar dados ao iniciar
-    loadData();
-    
-    // Configura auto-refresh
-    setupAutoRefresh();
-    
-    // Atualiza indicador de refresh a cada segundo
-    setInterval(updateRefreshIndicator, 1000);
-    
-    // Busca em tempo real
     const searchInput = document.getElementById('searchInput');
-    let searchTimeout;
-    searchInput.addEventListener('input', (e) => {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => {
-            renderData();
-        }, 300);
-    });
-    
-    // Alternar visualizações
-    document.querySelectorAll('.view-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentView = btn.dataset.view;
-            renderData();
+    if (searchInput) {
+        let searchTimeout;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                renderData();
+            }, 300);
         });
-    });
+    }
+    
+    const viewButtons = document.querySelectorAll('.view-btn');
+    if (viewButtons.length > 0) {
+        viewButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                viewButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentView = btn.dataset.view;
+                renderData();
+            });
+        });
+    }
+    
+    loadData();
+    setupAutoRefresh();
+    setInterval(updateRefreshIndicator, 1000);
     
     // Atalhos de teclado
     document.addEventListener('keydown', (e) => {
