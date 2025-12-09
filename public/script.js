@@ -4,7 +4,7 @@ const REFRESH_INTERVAL_SECONDS = 30;
 // Estado global da aplicação
 let globalData = [];
 let globalHeaders = [];
-let currentView = 'table';
+let currentView = window.innerWidth <= 768 ? 'cards' : 'table';
 let isAutoRefreshEnabled = true;
 let refreshInterval = REFRESH_INTERVAL_SECONDS * 1000;
 let lastUpdateTime = null;
@@ -541,6 +541,7 @@ function renderTable(data) {
             
             orderedHeaders.forEach(header => {
                 const td = document.createElement('td');
+                td.setAttribute('data-label', header || '');
                 const cellValue = row && row[header] !== undefined ? String(row[header]) : '';
                 
                 const headerLower = header ? header.toLowerCase().trim() : '';
@@ -1174,8 +1175,26 @@ async function submitEditGame(event) {
     }
 }
 
+// Função para detectar mobile e ajustar visualização
+function adjustViewForMobile() {
+    const isMobile = window.innerWidth <= 768;
+    const cardsBtn = document.querySelector('.view-btn[data-view="cards"]');
+    const tableBtn = document.querySelector('.view-btn[data-view="table"]');
+    
+    if (isMobile && currentView === 'table') {
+        currentView = 'cards';
+        if (tableBtn) tableBtn.classList.remove('active');
+        if (cardsBtn) cardsBtn.classList.add('active');
+    } else if (!isMobile && currentView === 'cards' && !cardsBtn?.classList.contains('active')) {
+        currentView = 'table';
+        if (cardsBtn) cardsBtn.classList.remove('active');
+        if (tableBtn) tableBtn.classList.add('active');
+    }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+    adjustViewForMobile();
     addRefreshControls();
     
     const searchInput = document.getElementById('searchInput');
@@ -1204,6 +1223,15 @@ document.addEventListener('DOMContentLoaded', () => {
     loadData();
     setupAutoRefresh();
     setInterval(updateRefreshIndicator, 1000);
+    
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            adjustViewForMobile();
+            renderData();
+        }, 250);
+    });
     
     // Atalhos de teclado
     document.addEventListener('keydown', (e) => {
