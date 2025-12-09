@@ -449,6 +449,260 @@ function printData() {
     window.print();
 }
 
+// Função para mostrar modal de autenticação
+function showAuthModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'authModalOverlay';
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-container';
+    modal.innerHTML = `
+        <div class="modal-header">
+            <h2 class="modal-title">Autenticação</h2>
+            <button class="modal-close" onclick="closeAuthModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="authPassword" class="form-label">Senha</label>
+                <input type="password" id="authPassword" class="form-input" placeholder="Digite a senha" autocomplete="off">
+                <span id="authError" class="form-error hidden"></span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeAuthModal()">Cancelar</button>
+            <button class="btn-primary" onclick="validateAuth()">Confirmar</button>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    setTimeout(() => {
+        overlay.classList.add('active');
+        document.getElementById('authPassword').focus();
+    }, 10);
+    
+    document.getElementById('authPassword').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            validateAuth();
+        }
+    });
+    
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            closeAuthModal();
+        }
+    });
+}
+
+// Função para fechar modal de autenticação
+function closeAuthModal() {
+    const overlay = document.getElementById('authModalOverlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        setTimeout(() => {
+            overlay.remove();
+        }, 300);
+    }
+}
+
+// Função para validar autenticação
+function validateAuth() {
+    const password = document.getElementById('authPassword').value;
+    const errorSpan = document.getElementById('authError');
+    
+    if (password === '123456@') {
+        closeAuthModal();
+        setTimeout(() => {
+            showAddGameModal();
+        }, 300);
+    } else {
+        errorSpan.textContent = 'Senha incorreta';
+        errorSpan.classList.remove('hidden');
+        document.getElementById('authPassword').value = '';
+        document.getElementById('authPassword').focus();
+    }
+}
+
+// Função para mostrar modal de cadastro de jogo
+function showAddGameModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'addGameModalOverlay';
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-container modal-large';
+    modal.innerHTML = `
+        <div class="modal-header">
+            <h2 class="modal-title">Adicionar Novo Jogo</h2>
+            <button class="modal-close" onclick="closeAddGameModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="addGameForm" onsubmit="submitGame(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="fase" class="form-label">Fase *</label>
+                        <select id="fase" class="form-select" required>
+                            <option value="">Selecione a fase</option>
+                            <option value="SEMIS">SEMIS</option>
+                            <option value="FINAL">FINAL</option>
+                            <option value="OITAVAS - Lado #1">OITAVAS - Lado #1</option>
+                            <option value="OITAVAS - Lado #2">OITAVAS - Lado #2</option>
+                            <option value="QUARTAS">QUARTAS</option>
+                            <option value="PRELIMINAR">PRELIMINAR</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="jogo" class="form-label">Jogo *</label>
+                        <input type="text" id="jogo" class="form-input" required placeholder="Ex: Jogo 1">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confronto" class="form-label">Confronto *</label>
+                    <input type="text" id="confronto" class="form-input" required placeholder="Ex: Time A vs Time B">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="data" class="form-label">Data *</label>
+                        <input type="date" id="data" class="form-input" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dia" class="form-label">Dia *</label>
+                        <input type="text" id="dia" class="form-input" required placeholder="Ex: Segunda-feira">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="horario" class="form-label">Horário *</label>
+                        <input type="time" id="horario" class="form-input" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="quadra" class="form-label">Quadra *</label>
+                    <select id="quadra" class="form-select" required>
+                        <option value="">Selecione a quadra</option>
+                        <option value="Saibro">Saibro</option>
+                        <option value="AABB">AABB</option>
+                        <option value="Jabuticabas">Jabuticabas</option>
+                    </select>
+                </div>
+                
+                <div id="formError" class="form-error hidden"></div>
+                <div id="formSuccess" class="form-success hidden"></div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn-secondary" onclick="closeAddGameModal()">Cancelar</button>
+            <button type="submit" form="addGameForm" class="btn-primary" id="submitBtn">
+                <span id="submitBtnText">Adicionar</span>
+                <span id="submitBtnLoader" class="btn-loader hidden"></span>
+            </button>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    setTimeout(() => {
+        overlay.classList.add('active');
+        document.getElementById('fase').focus();
+    }, 10);
+    
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            closeAddGameModal();
+        }
+    });
+}
+
+// Função para fechar modal de cadastro
+function closeAddGameModal() {
+    const overlay = document.getElementById('addGameModalOverlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        setTimeout(() => {
+            overlay.remove();
+        }, 300);
+    }
+}
+
+// Função para submeter formulário de jogo
+async function submitGame(event) {
+    event.preventDefault();
+    
+    const submitBtn = document.getElementById('submitBtn');
+    const submitBtnText = document.getElementById('submitBtnText');
+    const submitBtnLoader = document.getElementById('submitBtnLoader');
+    const formError = document.getElementById('formError');
+    const formSuccess = document.getElementById('formSuccess');
+    
+    formError.classList.add('hidden');
+    formSuccess.classList.add('hidden');
+    
+    const gameData = {
+        fase: document.getElementById('fase').value.trim(),
+        jogo: document.getElementById('jogo').value.trim(),
+        confronto: document.getElementById('confronto').value.trim(),
+        data: document.getElementById('data').value,
+        dia: document.getElementById('dia').value.trim(),
+        horario: document.getElementById('horario').value,
+        quadra: document.getElementById('quadra').value.trim()
+    };
+    
+    submitBtn.disabled = true;
+    submitBtnText.textContent = 'Adicionando...';
+    submitBtnLoader.classList.remove('hidden');
+    
+    try {
+        const response = await fetch('/api/add-game', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(gameData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            formSuccess.textContent = 'Jogo adicionado com sucesso!';
+            formSuccess.classList.remove('hidden');
+            
+            setTimeout(() => {
+                closeAddGameModal();
+                loadData();
+            }, 1500);
+        } else {
+            formError.textContent = result.error || 'Erro ao adicionar jogo';
+            formError.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtnText.textContent = 'Adicionar';
+            submitBtnLoader.classList.add('hidden');
+        }
+    } catch (error) {
+        formError.textContent = 'Erro de conexão. Tente novamente.';
+        formError.classList.remove('hidden');
+        submitBtn.disabled = false;
+        submitBtnText.textContent = 'Adicionar';
+        submitBtnLoader.classList.add('hidden');
+    }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     addRefreshControls();
@@ -641,6 +895,232 @@ style.textContent = `
             opacity: 0.6;
             box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
         }
+    }
+    
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .modal-overlay.active {
+        opacity: 1;
+    }
+    
+    .modal-container {
+        background: var(--color-bg-secondary);
+        border: 1px solid var(--color-border);
+        border-radius: 16px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow: hidden;
+        box-shadow: var(--shadow-lg);
+        transform: translateY(20px) scale(0.95);
+        transition: transform 0.3s ease;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .modal-overlay.active .modal-container {
+        transform: translateY(0) scale(1);
+    }
+    
+    .modal-container.modal-large {
+        max-width: 700px;
+    }
+    
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid var(--color-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+    }
+    
+    .modal-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--color-text);
+        margin: 0;
+        font-family: 'Bebas Neue', sans-serif;
+        letter-spacing: 1px;
+    }
+    
+    .modal-close {
+        background: transparent;
+        border: none;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        padding: 0.5rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: var(--transition);
+        width: 32px;
+        height: 32px;
+    }
+    
+    .modal-close:hover {
+        background: rgba(239, 68, 68, 0.1);
+        color: var(--color-error);
+    }
+    
+    .modal-close svg {
+        width: 20px;
+        height: 20px;
+    }
+    
+    .modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+    
+    .modal-footer {
+        padding: 1.5rem;
+        border-top: 1px solid var(--color-border);
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+        background: var(--color-bg-tertiary);
+    }
+    
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+    
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+    
+    .form-label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: var(--color-text);
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    
+    .form-input,
+    .form-select {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        background: var(--color-bg-tertiary);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        color: var(--color-text);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        transition: var(--transition);
+    }
+    
+    .form-input:focus,
+    .form-select:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+    
+    .form-input::placeholder {
+        color: var(--color-text-tertiary);
+    }
+    
+    .form-select {
+        cursor: pointer;
+    }
+    
+    .form-error {
+        color: var(--color-error);
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
+        padding: 0.75rem;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 8px;
+    }
+    
+    .form-success {
+        color: var(--color-success);
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
+        padding: 0.75rem;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-radius: 8px;
+    }
+    
+    .btn-primary,
+    .btn-secondary {
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 500;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: var(--transition);
+        border: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .btn-primary {
+        background: var(--gradient-primary);
+        color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    }
+    
+    .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    
+    .btn-secondary {
+        background: var(--color-bg-tertiary);
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+    }
+    
+    .btn-secondary:hover {
+        background: var(--color-bg);
+        border-color: var(--color-border-light);
+    }
+    
+    .btn-loader {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+    
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+    
+    .hidden {
+        display: none !important;
     }
 `;
 document.head.appendChild(style);

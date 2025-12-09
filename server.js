@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const path = require('path');
+const fs = require('fs');
 const { google } = require('googleapis');
 
 const app = express();
@@ -29,7 +30,35 @@ let memoryCache = {
     maxAge: 5000 // 5 segundos de cache em memória
 };
 
-// Função para obter dados da planilha usando API Key (planilha pública)
+// Função para inicializar autenticação
+function initializeAuth() {
+    if (process.env.GOOGLE_CREDENTIALS) {
+        try {
+            const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+            return new google.auth.GoogleAuth({
+                credentials: credentials,
+                scopes: ['https://www.googleapis.com/auth/spreadsheets']
+            });
+        } catch (error) {
+            console.error('Erro ao parsear GOOGLE_CREDENTIALS:', error);
+            return process.env.GOOGLE_API_KEY;
+        }
+    } else if (fs.existsSync(path.join(__dirname, 'credentials.json'))) {
+        return new google.auth.GoogleAuth({
+            keyFile: path.join(__dirname, 'credentials.json'),
+            scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+    } else {
+        console.log('Usando API Key (apenas leitura). Para escrita, configure Service Account.');
+        return process.env.GOOGLE_API_KEY;
+    }
+}
+
+const auth = initializeAuth();
+
+// Função para obter dados da planilha
+// Usa Service Account se credentials.json ou GOOGLE_CREDENTIALS estiverem configurados
+// Caso contrário, usa API Key (apenas leitura)
 async function getSheetData() {
     // Verifica cache em memória
     if (memoryCache.data && memoryCache.timestamp) {
@@ -44,7 +73,7 @@ async function getSheetData() {
         console.log('Buscando dados frescos da planilha...');
         const sheets = google.sheets({ 
             version: 'v4',
-            auth: process.env.GOOGLE_API_KEY 
+            auth: auth
         });
 
         const response = await sheets.spreadsheets.values.get({
@@ -152,6 +181,116 @@ app.post('/api/webhook', async (req, res) => {
         received: true,
         message: 'Cache limpo, próxima requisição buscará dados novos' 
     });
+});
+
+// Função para adicionar jogo na planilha
+async function addGameToSheet(gameData) {
+    try {
+        const sheetData = await getSheetData();
+        const headers = sheetData.headers;
+        
+        if (!headers || headers.length === 0) {
+            throw new Error('Não foi possível obter os cabeçalhos da planilha');
+        }
+
+        const sheets = google.sheets({ 
+            version: 'v4',
+            auth: auth
+        });
+
+        const values = headers.map(header => {
+            const headerLower = header ? header.toLowerCase().trim() : '';
+            
+            if (headerLower.includes('fase')) {
+                return gameData.fase || '';
+            } else if (headerLower.includes('jogo')) {
+                return gameData.jogo || '';
+            } else if (headerLower.includes('confronto')) {
+                return gameData.confronto || '';
+            } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
+                return gameData.data || '';
+            } else if (headerLower.includes('dia')) {
+                return gameData.dia || '';
+            } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
+                return gameData.horario || '';
+            } else if (headerLower.includes('quadra')) {
+                return gameData.quadra || '';
+            } else {
+                return '';
+            }
+        });
+
+        const response = await sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'A:Z',
+            valueInputOption: 'USER_ENTERED',
+            insertDataOption: 'INSERT_ROWS',
+            resource: {
+                values: [values]
+            }
+        });
+
+        memoryCache.data = null;
+        memoryCache.timestamp = null;
+
+        return {
+            success: true,
+            updatedCells: response.data.updates?.updatedCells || 0
+        };
+    } catch (error) {
+        console.error('Erro ao adicionar jogo:', error);
+        throw error;
+    }
+}
+
+// Rota para adicionar jogo
+app.post('/api/add-game', async (req, res) => {
+    try {
+        const { fase, jogo, confronto, data, dia, horario, quadra } = req.body;
+
+        if (!fase || !jogo || !confronto || !data || !dia || !horario || !quadra) {
+            return res.status(400).json({
+                success: false,
+                error: 'Todos os campos são obrigatórios'
+            });
+        }
+
+        const gameData = {
+            fase: String(fase).trim(),
+            jogo: String(jogo).trim(),
+            confronto: String(confronto).trim(),
+            data: String(data).trim(),
+            dia: String(dia).trim(),
+            horario: String(horario).trim(),
+            quadra: String(quadra).trim()
+        };
+
+        const result = await addGameToSheet(gameData);
+
+        res.json({
+            success: true,
+            message: 'Jogo adicionado com sucesso',
+            data: result
+        });
+    } catch (error) {
+        console.error('Erro na API ao adicionar jogo:', error);
+        
+        let errorMessage = 'Erro ao adicionar jogo na planilha';
+        
+        if (error.code === 403) {
+            errorMessage = 'Permissão negada. Verifique as credenciais da API.';
+        } else if (error.code === 400) {
+            errorMessage = 'Dados inválidos. Verifique os campos enviados.';
+        } else if (error.message) {
+            errorMessage = error.message;
+        }
+
+        res.status(500).json({
+            success: false,
+            error: errorMessage,
+            message: error.message
+        });
+    }
 });
 
 // Iniciar servidor
