@@ -1,9 +1,12 @@
+// Configuração de atualização
+const REFRESH_INTERVAL_SECONDS = 30;
+
 // Estado global da aplicação
 let globalData = [];
 let globalHeaders = [];
 let currentView = 'table';
 let isAutoRefreshEnabled = true;
-let refreshInterval = 30000; // 30 segundos por padrão
+let refreshInterval = REFRESH_INTERVAL_SECONDS * 1000;
 let lastUpdateTime = null;
 
 // Função principal para carregar dados
@@ -120,9 +123,15 @@ function updateRefreshIndicator() {
         const now = new Date();
         const secondsUntilRefresh = Math.max(0, Math.floor((nextRefresh - now) / 1000));
         
-        indicator.textContent = `Próxima atualização em ${secondsUntilRefresh}s`;
+        const minutes = Math.floor(secondsUntilRefresh / 60);
+        const seconds = secondsUntilRefresh % 60;
         
-        // Anima a barra de progresso
+        if (minutes > 0) {
+            indicator.textContent = `Próxima atualização em ${minutes}m ${seconds}s`;
+        } else {
+            indicator.textContent = `Próxima atualização em ${seconds}s`;
+        }
+        
         const progressBar = document.getElementById('refreshProgress');
         if (progressBar) {
             const progress = ((refreshInterval - (secondsUntilRefresh * 1000)) / refreshInterval) * 100;
@@ -267,6 +276,25 @@ function filterData(searchTerm) {
     });
 }
 
+// Função para ordenar headers garantindo que "Placar ao Vivo" fique ao lado de "Placar"
+function getOrderedHeaders() {
+    if (!globalHeaders || globalHeaders.length === 0) {
+        return [];
+    }
+    
+    const orderedHeaders = [...globalHeaders];
+    const placarIndex = orderedHeaders.findIndex(h => h && h.toLowerCase().includes('placar') && !h.toLowerCase().includes('vivo'));
+    const placarVivoIndex = orderedHeaders.findIndex(h => h && h.toLowerCase().includes('placar') && h.toLowerCase().includes('vivo'));
+    
+    if (placarIndex !== -1 && placarVivoIndex !== -1 && placarVivoIndex !== placarIndex + 1) {
+        const placarVivo = orderedHeaders[placarVivoIndex];
+        orderedHeaders.splice(placarVivoIndex, 1);
+        orderedHeaders.splice(placarIndex + 1, 0, placarVivo);
+    }
+    
+    return orderedHeaders;
+}
+
 // Função para renderizar tabela
 function renderTable(data) {
     const tableHeader = document.getElementById('tableHeader');
@@ -279,8 +307,10 @@ function renderTable(data) {
     tableHeader.innerHTML = '';
     tableBody.innerHTML = '';
     
+    const orderedHeaders = getOrderedHeaders();
+    
     const headerRow = document.createElement('tr');
-    globalHeaders.forEach(header => {
+    orderedHeaders.forEach(header => {
         const th = document.createElement('th');
         th.textContent = header || '';
         headerRow.appendChild(th);
@@ -292,9 +322,34 @@ function renderTable(data) {
             const tr = document.createElement('tr');
             tr.style.animationDelay = `${index * 0.02}s`;
             
-            globalHeaders.forEach(header => {
+            orderedHeaders.forEach(header => {
                 const td = document.createElement('td');
-                td.textContent = row && row[header] !== undefined ? String(row[header]) : '';
+                const cellValue = row && row[header] !== undefined ? String(row[header]) : '';
+                
+                const headerLower = header ? header.toLowerCase().trim() : '';
+                const isPlacarVivo = headerLower.includes('placar') && headerLower.includes('vivo');
+                const hasValue = cellValue && cellValue.trim() !== '' && cellValue.trim() !== '-';
+                
+                if (isPlacarVivo && hasValue) {
+                    const cellContent = document.createElement('div');
+                    cellContent.style.cssText = 'display: flex; align-items: center; gap: 10px; justify-content: flex-start;';
+                    
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = cellValue;
+                    textSpan.style.flex = '1';
+                    
+                    const liveIndicator = document.createElement('span');
+                    liveIndicator.className = 'live-indicator';
+                    liveIndicator.setAttribute('aria-label', 'Ao vivo');
+                    liveIndicator.title = 'Jogo ao vivo';
+                    
+                    cellContent.appendChild(textSpan);
+                    cellContent.appendChild(liveIndicator);
+                    td.appendChild(cellContent);
+                } else {
+                    td.textContent = cellValue;
+                }
+                
                 tr.appendChild(td);
             });
             
@@ -313,13 +368,15 @@ function renderCards(data) {
     
     cardsContainer.innerHTML = '';
     
+    const orderedHeaders = getOrderedHeaders();
+    
     if (data && data.length > 0) {
         data.forEach((row, index) => {
             const card = document.createElement('div');
             card.className = 'data-card';
             card.style.setProperty('--card-index', index);
             
-            globalHeaders.forEach(header => {
+            orderedHeaders.forEach(header => {
                 const field = document.createElement('div');
                 field.className = 'card-field';
                 
@@ -329,7 +386,31 @@ function renderCards(data) {
                 
                 const value = document.createElement('div');
                 value.className = 'card-value';
-                value.textContent = row && row[header] !== undefined ? String(row[header]) : '-';
+                
+                const headerLower = header ? header.toLowerCase().trim() : '';
+                const isPlacarVivo = headerLower.includes('placar') && headerLower.includes('vivo');
+                const cellValue = row && row[header] !== undefined ? String(row[header]) : '';
+                const hasValue = cellValue && cellValue.trim() !== '' && cellValue.trim() !== '-';
+                
+                if (isPlacarVivo && hasValue) {
+                    const valueContent = document.createElement('div');
+                    valueContent.style.cssText = 'display: flex; align-items: center; gap: 10px; justify-content: flex-start;';
+                    
+                    const textSpan = document.createElement('span');
+                    textSpan.textContent = cellValue;
+                    textSpan.style.flex = '1';
+                    
+                    const liveIndicator = document.createElement('span');
+                    liveIndicator.className = 'live-indicator';
+                    liveIndicator.setAttribute('aria-label', 'Ao vivo');
+                    liveIndicator.title = 'Jogo ao vivo';
+                    
+                    valueContent.appendChild(textSpan);
+                    valueContent.appendChild(liveIndicator);
+                    value.appendChild(valueContent);
+                } else {
+                    value.textContent = cellValue || '-';
+                }
                 
                 field.appendChild(label);
                 field.appendChild(value);
@@ -368,41 +449,8 @@ function printData() {
     window.print();
 }
 
-// Função para alterar intervalo de refresh
-function changeRefreshInterval(seconds) {
-    refreshInterval = seconds * 1000;
-    setupAutoRefresh();
-    
-    // Salva preferência no localStorage
-    localStorage.setItem('refreshInterval', refreshInterval);
-    
-    // Feedback visual
-    const notification = document.createElement('div');
-    notification.textContent = `Atualização automática: ${seconds}s`;
-    notification.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--color-primary);
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        z-index: 1000;
-        animation: fadeInUp 0.3s ease;
-    `;
-    document.body.appendChild(notification);
-    setTimeout(() => notification.remove(), 2000);
-}
-
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    const savedInterval = localStorage.getItem('refreshInterval');
-    if (savedInterval) {
-        refreshInterval = parseInt(savedInterval);
-    }
-    
     addRefreshControls();
     
     const searchInput = document.getElementById('searchInput');
@@ -471,52 +519,25 @@ function addRefreshControls() {
     const controlsSection = document.querySelector('.controls-section');
     
     if (controlsSection && !document.getElementById('refreshControls')) {
+        const initialMinutes = Math.floor(REFRESH_INTERVAL_SECONDS / 60);
+        const initialSeconds = REFRESH_INTERVAL_SECONDS % 60;
+        const initialText = initialMinutes > 0 
+            ? `Próxima atualização em ${initialMinutes}m ${initialSeconds > 0 ? initialSeconds + 's' : ''}`.trim()
+            : `Próxima atualização em ${initialSeconds}s`;
+        
         const refreshControls = document.createElement('div');
         refreshControls.id = 'refreshControls';
         refreshControls.className = 'refresh-controls';
         refreshControls.innerHTML = `
-            <div class="refresh-options">
-                <button class="refresh-option" onclick="changeRefreshInterval(10)" title="Muito Rápido">10s</button>
-                <button class="refresh-option active" onclick="changeRefreshInterval(30)" title="Rápido">30s</button>
-                <button class="refresh-option" onclick="changeRefreshInterval(60)" title="Normal">1m</button>
-                <button class="refresh-option" onclick="changeRefreshInterval(300)" title="Lento">5m</button>
-                <button class="refresh-option" onclick="toggleAutoRefresh()" title="Pausar/Retomar">
-                    <svg id="pauseIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="6" y="4" width="4" height="16"/>
-                        <rect x="14" y="4" width="4" height="16"/>
-                    </svg>
-                </button>
-            </div>
             <div class="refresh-status">
                 <div class="refresh-progress-bar">
                     <div id="refreshProgress" class="refresh-progress"></div>
                 </div>
-                <span id="refreshIndicator" class="refresh-text">Próxima atualização em 30s</span>
+                <span id="refreshIndicator" class="refresh-text">${initialText}</span>
             </div>
         `;
         
         controlsSection.appendChild(refreshControls);
-    }
-}
-
-// Função para pausar/retomar auto-refresh
-function toggleAutoRefresh() {
-    isAutoRefreshEnabled = !isAutoRefreshEnabled;
-    const pauseIcon = document.getElementById('pauseIcon');
-    
-    if (isAutoRefreshEnabled) {
-        pauseIcon.innerHTML = `
-            <rect x="6" y="4" width="4" height="16"/>
-            <rect x="14" y="4" width="4" height="16"/>
-        `;
-        setupAutoRefresh();
-    } else {
-        pauseIcon.innerHTML = `
-            <polygon points="5 3 19 12 5 21 5 3"/>
-        `;
-        clearInterval(window.autoRefreshTimer);
-        document.getElementById('refreshIndicator').textContent = 'Auto-refresh pausado';
-        document.getElementById('refreshProgress').style.width = '0%';
     }
 }
 
@@ -559,7 +580,6 @@ style.textContent = `
     .refresh-controls {
         display: flex;
         align-items: center;
-        gap: 2rem;
         padding: 1rem;
         background: rgba(39, 39, 42, 0.5);
         backdrop-filter: blur(10px);
@@ -568,41 +588,8 @@ style.textContent = `
         margin-top: 1rem;
     }
     
-    .refresh-options {
-        display: flex;
-        gap: 0.5rem;
-    }
-    
-    .refresh-option {
-        padding: 0.5rem 0.75rem;
-        background: transparent;
-        border: 1px solid var(--color-border);
-        border-radius: 8px;
-        color: var(--color-text-secondary);
-        font-size: 0.85rem;
-        cursor: pointer;
-        transition: var(--transition);
-    }
-    
-    .refresh-option:hover {
-        background: rgba(99, 102, 241, 0.1);
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-    }
-    
-    .refresh-option.active {
-        background: var(--color-primary);
-        border-color: var(--color-primary);
-        color: white;
-    }
-    
-    .refresh-option svg {
-        width: 16px;
-        height: 16px;
-    }
-    
     .refresh-status {
-        flex: 1;
+        width: 100%;
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
@@ -630,6 +617,30 @@ style.textContent = `
     
     .data-notification {
         animation-fill-mode: forwards;
+    }
+    
+    .live-indicator {
+        width: 12px;
+        height: 12px;
+        min-width: 12px;
+        min-height: 12px;
+        border-radius: 50%;
+        background: #10b981;
+        display: inline-block;
+        animation: pulseLive 2s ease-in-out infinite;
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+        flex-shrink: 0;
+    }
+    
+    @keyframes pulseLive {
+        0%, 100% {
+            opacity: 1;
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+        }
+        50% {
+            opacity: 0.6;
+            box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+        }
     }
 `;
 document.head.appendChild(style);
