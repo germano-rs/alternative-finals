@@ -520,6 +520,23 @@ body {
     height: 18px;
 }
 
+.clear-filters-btn {
+    background: var(--color-error);
+    color: white;
+    border-color: var(--color-error);
+}
+
+.clear-filters-btn:hover {
+    background: #dc2626;
+    border-color: #dc2626;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.clear-filters-btn:active {
+    transform: translateY(0);
+}
+
 .date-filter-select {
     padding: 0.625rem 1rem;
     background: rgba(39, 39, 42, 0.5);
@@ -953,6 +970,15 @@ body {
     .filter-btn svg {
         width: 20px;
         height: 20px;
+    }
+    
+    .clear-filters-btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .clear-filters-btn span {
+        display: none;
     }
     
     .date-filter-select,

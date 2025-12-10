@@ -481,6 +481,35 @@ function applyPlacarFilter() {
     }
 }
 
+// Função para limpar todos os filtros
+function clearAllFilters() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    showOnlyLiveGames = false;
+    dateFilter = 'all';
+    placarFilter = 'all';
+    
+    const liveFilterBtn = document.getElementById('liveFilterBtn');
+    if (liveFilterBtn) {
+        liveFilterBtn.classList.remove('active');
+    }
+    
+    const dateFilterSelect = document.getElementById('dateFilterSelect');
+    if (dateFilterSelect) {
+        dateFilterSelect.value = 'all';
+    }
+    
+    const placarFilterSelect = document.getElementById('placarFilterSelect');
+    if (placarFilterSelect) {
+        placarFilterSelect.value = 'all';
+    }
+    
+    renderData();
+}
+
 // Função para encontrar índice real na planilha
 function findRealRowIndex(rowData) {
     if (!globalData || !rowData) {
