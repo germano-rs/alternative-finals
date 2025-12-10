@@ -10,6 +10,7 @@ let refreshInterval = REFRESH_INTERVAL_SECONDS * 1000;
 let lastUpdateTime = null;
 let showOnlyLiveGames = false;
 let dateFilter = 'all';
+let placarFilter = 'all';
 
 // Função principal para carregar dados
 async function loadData(showLoadingIndicator = true) {
@@ -243,6 +244,10 @@ function renderData() {
         filteredData = filterByDate(filteredData, dateFilter);
     }
     
+    if (placarFilter !== 'all') {
+        filteredData = filterByPlacar(filteredData, placarFilter);
+    }
+    
     const tableView = document.getElementById('tableView');
     const cardsView = document.getElementById('cardsView');
     const loadingContainer = document.getElementById('loadingContainer');
@@ -425,6 +430,53 @@ function applyDateFilter() {
     const dateFilterSelect = document.getElementById('dateFilterSelect');
     if (dateFilterSelect) {
         dateFilter = dateFilterSelect.value;
+        renderData();
+    }
+}
+
+// Função para filtrar jogos por placar
+function filterByPlacar(data, filterType) {
+    if (!data || data.length === 0) {
+        return [];
+    }
+    
+    return data.filter(row => {
+        if (!row) {
+            return false;
+        }
+        
+        let hasPlacar = false;
+        let hasPlacarVivo = false;
+        
+        for (const key in row) {
+            const keyLower = key ? key.toLowerCase().trim() : '';
+            const value = row[key];
+            const valueStr = value ? String(value).trim() : '';
+            
+            if (keyLower.includes('placar') && !keyLower.includes('vivo')) {
+                hasPlacar = valueStr !== '' && valueStr !== '-';
+            } else if (keyLower.includes('placar') && keyLower.includes('vivo')) {
+                hasPlacarVivo = valueStr !== '' && valueStr !== '-';
+            }
+        }
+        
+        const hasAnyPlacar = hasPlacar || hasPlacarVivo;
+        
+        if (filterType === 'with') {
+            return hasAnyPlacar;
+        } else if (filterType === 'without') {
+            return !hasAnyPlacar;
+        }
+        
+        return true;
+    });
+}
+
+// Função para aplicar filtro de placar
+function applyPlacarFilter() {
+    const placarFilterSelect = document.getElementById('placarFilterSelect');
+    if (placarFilterSelect) {
+        placarFilter = placarFilterSelect.value;
         renderData();
     }
 }

@@ -551,6 +551,10 @@ body {
     color: var(--color-text);
 }
 
+#placarFilterSelect {
+    margin-left: 0.5rem;
+}
+
 /* Seção de dados */
 .data-section {
     background: rgba(39, 39, 42, 0.3);
@@ -908,8 +912,8 @@ body {
     }
     
     .view-toggles {
-        justify-content: flex-start;
-        flex-wrap: wrap;
+        flex-direction: column;
+        align-items: stretch;
         gap: 0.5rem;
         padding: 0.5rem;
     }
@@ -917,6 +921,8 @@ body {
     .view-btn {
         padding: 0.5rem 0.75rem;
         font-size: 0.85rem;
+        width: 100%;
+        justify-content: center;
     }
     
     .view-btn span {
@@ -936,6 +942,8 @@ body {
         padding: 0.5rem 0.75rem;
         margin-left: 0;
         font-size: 0.85rem;
+        width: 100%;
+        justify-content: center;
     }
     
     .filter-btn span {
@@ -947,12 +955,18 @@ body {
         height: 20px;
     }
     
-    .date-filter-select {
+    .date-filter-select,
+    #placarFilterSelect {
         margin-left: 0;
+        margin-top: 0;
         padding: 0.5rem 0.75rem;
         font-size: 0.85rem;
         min-width: auto;
-        flex: 1;
+        width: 100%;
+    }
+    
+    #placarFilterSelect {
+        margin-top: 0.5rem;
     }
     
     .cards-grid {
@@ -1042,6 +1056,7 @@ body {
     .refresh-text {
         font-size: 0.75rem;
     }
+    
     
     .modal-container {
         width: 95%;
