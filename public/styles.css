@@ -520,6 +520,14 @@ body {
     height: 18px;
 }
 
+.filter-btn .mobile-text {
+    display: none;
+}
+
+.filter-btn .desktop-text {
+    display: inline;
+}
+
 .clear-filters-btn {
     background: var(--color-error);
     color: white;
@@ -965,6 +973,19 @@ body {
     
     .filter-btn span {
         display: none;
+    }
+    
+    .filter-btn .desktop-text {
+        display: none !important;
+    }
+    
+    #liveFilterBtn .mobile-text {
+        display: inline-block !important;
+        margin-left: 0.25rem;
+    }
+    
+    #liveFilterBtn .desktop-text {
+        display: none !important;
     }
     
     .filter-btn svg {
