@@ -5,14 +5,48 @@ const helmet = require('helmet');
 const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware de segurança e performance
+const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '123456@';
+const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
+
+const activeTokens = new Set();
+
+function generateToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function isValidToken(token) {
+    return activeTokens.has(token);
+}
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            error: 'Você precisa fazer login para editar'
+        });
+    }
+    
+    if (!isValidToken(token)) {
+        return res.status(401).json({
+            success: false,
+            error: 'Token inválido. Faça login novamente.'
+        });
+    }
+    
+    next();
+}
+
 app.use(helmet({
-    contentSecurityPolicy: false // Permitir recursos externos
+    contentSecurityPolicy: false
 }));
 app.use(compression());
 app.use(cors());
@@ -243,8 +277,39 @@ async function addGameToSheet(gameData) {
     }
 }
 
+// Rota para autenticação
+app.post('/api/auth', async (req, res) => {
+    try {
+        const { password } = req.body;
+        
+        if (password === AUTH_PASSWORD) {
+            const token = generateToken();
+            activeTokens.add(token);
+            
+            setTimeout(() => {
+                activeTokens.delete(token);
+            }, 24 * 60 * 60 * 1000);
+            
+            return res.json({
+                success: true,
+                token: token
+            });
+        } else {
+            return res.status(401).json({
+                success: false,
+                error: 'Senha incorreta'
+            });
+        }
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: 'Erro ao autenticar'
+        });
+    }
+});
+
 // Rota para adicionar jogo
-app.post('/api/add-game', async (req, res) => {
+app.post('/api/add-game', authenticateToken, async (req, res) => {
     try {
         const { fase, jogo, confronto, data, dia, horario, quadra } = req.body;
 
@@ -357,7 +422,7 @@ async function updateGameInSheet(rowIndex, gameData) {
 }
 
 // Rota para atualizar jogo
-app.post('/api/update-game', async (req, res) => {
+app.post('/api/update-game', authenticateToken, async (req, res) => {
     try {
         const { rowIndex, fase, jogo, confronto, data, dia, horario, quadra, placarVivo } = req.body;
 

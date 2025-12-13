@@ -1186,25 +1186,49 @@ function closeAuthModal() {
 }
 
 // Função para validar autenticação
-function validateAuth() {
+async function validateAuth() {
     const password = document.getElementById('authPassword').value;
     const errorSpan = document.getElementById('authError');
     const authCallback = window.pendingAuthCallback;
     
-    if (password === '123456@') {
-        closeAuthModal();
-        if (authCallback) {
-            setTimeout(() => {
-                authCallback();
-                window.pendingAuthCallback = null;
-            }, 300);
+    if (!password) {
+        errorSpan.textContent = 'Digite a senha';
+        errorSpan.classList.remove('hidden');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/auth', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ password: password })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.token) {
+            localStorage.setItem('authToken', result.token);
+            closeAuthModal();
+            if (authCallback) {
+                setTimeout(() => {
+                    authCallback();
+                    window.pendingAuthCallback = null;
+                }, 300);
+            } else {
+                setTimeout(() => {
+                    showAddGameModal();
+                }, 300);
+            }
         } else {
-            setTimeout(() => {
-                showAddGameModal();
-            }, 300);
+            errorSpan.textContent = result.error || 'Erro ao autenticar';
+            errorSpan.classList.remove('hidden');
+            document.getElementById('authPassword').value = '';
+            document.getElementById('authPassword').focus();
         }
-    } else {
-        errorSpan.textContent = 'Senha incorreta';
+    } catch (error) {
+        errorSpan.textContent = 'Erro de conexão. Tente novamente.';
         errorSpan.classList.remove('hidden');
         document.getElementById('authPassword').value = '';
         document.getElementById('authPassword').focus();
@@ -1217,6 +1241,7 @@ function showAuthModalForEdit(rowData, rowIndex) {
         showEditGameModal(rowData, rowIndex);
     };
     window.pendingRowIndex = rowIndex;
+    window.pendingRowData = rowData;
     showAuthModal();
 }
 
@@ -1524,12 +1549,17 @@ async function submitGame(event) {
         const response = await fetch('/api/add-game', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
             },
             body: JSON.stringify(gameData)
         });
         
         const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.error || 'Erro ao adicionar jogo');
+        }
         
         if (result.success) {
             formSuccess.textContent = 'Jogo adicionado com sucesso!';
@@ -1540,15 +1570,35 @@ async function submitGame(event) {
                 loadData();
             }, 1500);
         } else {
-            formError.textContent = result.error || 'Erro ao adicionar jogo';
+            const errorMessage = result.error || 'Erro ao adicionar jogo';
+            formError.textContent = errorMessage;
             formError.classList.remove('hidden');
+            
+            if (errorMessage.includes('login') || errorMessage.includes('Token')) {
+                localStorage.removeItem('authToken');
+                setTimeout(() => {
+                    closeAddGameModal();
+                    showAuthModal();
+                }, 2000);
+            }
+            
             submitBtn.disabled = false;
             submitBtnText.textContent = 'Adicionar';
             submitBtnLoader.classList.add('hidden');
         }
     } catch (error) {
-        formError.textContent = 'Erro de conexão. Tente novamente.';
+        const errorMessage = error.message || 'Erro de conexão. Tente novamente.';
+        formError.textContent = errorMessage;
         formError.classList.remove('hidden');
+        
+        if (errorMessage.includes('login') || errorMessage.includes('Token')) {
+            localStorage.removeItem('authToken');
+            setTimeout(() => {
+                closeAddGameModal();
+                showAuthModal();
+            }, 2000);
+        }
+        
         submitBtn.disabled = false;
         submitBtnText.textContent = 'Adicionar';
         submitBtnLoader.classList.add('hidden');
@@ -1595,7 +1645,8 @@ async function submitEditGame(event) {
         const response = await fetch('/api/update-game', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
             },
             body: JSON.stringify({
                 rowIndex: rowIndex,
@@ -1605,6 +1656,10 @@ async function submitEditGame(event) {
         
         const result = await response.json();
         
+        if (!response.ok) {
+            throw new Error(result.error || 'Erro ao atualizar jogo');
+        }
+        
         if (result.success) {
             formSuccess.textContent = 'Jogo atualizado com sucesso!';
             formSuccess.classList.remove('hidden');
@@ -1612,18 +1667,47 @@ async function submitEditGame(event) {
             setTimeout(() => {
                 closeEditGameModal();
                 window.pendingRowIndex = null;
+                window.pendingRowData = null;
                 loadData();
             }, 1500);
         } else {
-            formError.textContent = result.error || 'Erro ao atualizar jogo';
+            const errorMessage = result.error || 'Erro ao atualizar jogo';
+            formError.textContent = errorMessage;
             formError.classList.remove('hidden');
+            
+            if (errorMessage.includes('login') || errorMessage.includes('Token')) {
+                localStorage.removeItem('authToken');
+                setTimeout(() => {
+                    closeEditGameModal();
+                    if (window.pendingRowData && window.pendingRowIndex) {
+                        showAuthModalForEdit(window.pendingRowData, window.pendingRowIndex);
+                    } else {
+                        showAuthModal();
+                    }
+                }, 2000);
+            }
+            
             submitBtn.disabled = false;
             submitBtnText.textContent = 'Salvar';
             submitBtnLoader.classList.add('hidden');
         }
     } catch (error) {
-        formError.textContent = 'Erro de conexão. Tente novamente.';
+        const errorMessage = error.message || 'Erro de conexão. Tente novamente.';
+        formError.textContent = errorMessage;
         formError.classList.remove('hidden');
+        
+        if (errorMessage.includes('login') || errorMessage.includes('Token')) {
+            localStorage.removeItem('authToken');
+            setTimeout(() => {
+                closeEditGameModal();
+                if (window.pendingRowData && window.pendingRowIndex) {
+                    showAuthModalForEdit(window.pendingRowData, window.pendingRowIndex);
+                } else {
+                    showAuthModal();
+                }
+            }, 2000);
+        }
+        
         submitBtn.disabled = false;
         submitBtnText.textContent = 'Salvar';
         submitBtnLoader.classList.add('hidden');
