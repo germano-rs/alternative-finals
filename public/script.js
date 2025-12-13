@@ -748,6 +748,380 @@ function printData() {
     window.print();
 }
 
+// Função para obter todos os jogos filtrados (sem limite)
+function getAllFilteredGames() {
+    if (!globalData || globalData.length === 0) {
+        return [];
+    }
+    
+    const searchInput = document.getElementById('searchInput');
+    const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase() : '';
+    let filteredData = filterData(searchTerm);
+    
+    if (showOnlyLiveGames) {
+        filteredData = filterLiveGames(filteredData);
+    }
+    
+    if (dateFilter !== 'all') {
+        filteredData = filterByDate(filteredData, dateFilter);
+    }
+    
+    if (placarFilter !== 'all') {
+        filteredData = filterByPlacar(filteredData, placarFilter);
+    }
+    
+    return filteredData;
+}
+
+// Função para obter jogos filtrados (máximo 5)
+function getFilteredGames() {
+    return getAllFilteredGames().slice(0, 5);
+}
+
+// Função para extrair vencedor do placar
+function extractWinner(confronto, placar) {
+    if (!confronto || !placar) {
+        return null;
+    }
+    
+    const placarStr = String(placar).trim();
+    if (placarStr === '' || placarStr === '-') {
+        return null;
+    }
+    
+    const placarMatch = placarStr.match(/(\d+)\s*x\s*(\d+)/i);
+    if (!placarMatch) {
+        return null;
+    }
+    
+    const score1 = parseInt(placarMatch[1], 10);
+    const score2 = parseInt(placarMatch[2], 10);
+    
+    if (score1 === score2) {
+        return null;
+    }
+    
+    const confrontoStr = String(confronto).trim();
+    const teamsMatch = confrontoStr.match(/(.+?)\s+vs\s+(.+)/i);
+    if (!teamsMatch) {
+        return null;
+    }
+    
+    const team1 = teamsMatch[1].trim();
+    const team2 = teamsMatch[2].trim();
+    
+    if (score1 > score2) {
+        return team1;
+    } else {
+        return team2;
+    }
+}
+
+// Função para mostrar modal de confirmação de download
+function showDownloadConfirmationModal(totalGames, callback) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'downloadConfirmationModalOverlay';
+    
+    const modal = document.createElement('div');
+    modal.className = 'modal-container';
+    modal.innerHTML = `
+        <div class="modal-header">
+            <h2 class="modal-title">Confirmar Download</h2>
+            <button class="modal-close" onclick="closeDownloadConfirmationModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p style="color: var(--color-text); font-size: 1rem; line-height: 1.6;">
+                Foram encontrados <strong>${totalGames} jogos</strong> com os filtros aplicados.
+            </p>
+            <p style="color: var(--color-text-secondary); font-size: 0.9rem; margin-top: 1rem;">
+                A imagem será gerada com os <strong>primeiros 5 jogos</strong>. Deseja continuar?
+            </p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeDownloadConfirmationModal()">Cancelar</button>
+            <button class="btn-primary" onclick="confirmDownloadImage()">Confirmar Download</button>
+        </div>
+    `;
+    
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    
+    window.pendingDownloadCallback = callback;
+    
+    setTimeout(() => {
+        overlay.classList.add('active');
+    }, 10);
+    
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            closeDownloadConfirmationModal();
+        }
+    });
+}
+
+// Função para fechar modal de confirmação
+function closeDownloadConfirmationModal() {
+    const overlay = document.getElementById('downloadConfirmationModalOverlay');
+    if (overlay) {
+        overlay.classList.remove('active');
+        setTimeout(() => {
+            overlay.remove();
+            window.pendingDownloadCallback = null;
+        }, 300);
+    }
+}
+
+// Função para confirmar download
+function confirmDownloadImage() {
+    const callback = window.pendingDownloadCallback;
+    closeDownloadConfirmationModal();
+    if (callback) {
+        setTimeout(() => {
+            callback();
+        }, 300);
+    }
+}
+
+// Função para gerar imagem dos jogos filtrados
+async function generateGamesImage() {
+    const allFilteredGames = getAllFilteredGames();
+    
+    if (allFilteredGames.length === 0) {
+        alert('Nenhum jogo encontrado para gerar a imagem.');
+        return;
+    }
+    
+    if (allFilteredGames.length > 5) {
+        showDownloadConfirmationModal(allFilteredGames.length, () => {
+            generateImageInternal();
+        });
+        return;
+    }
+    
+    generateImageInternal();
+}
+
+// Função interna para gerar a imagem
+async function generateImageInternal() {
+    const filteredGames = getFilteredGames();
+    
+    if (filteredGames.length === 0) {
+        alert('Nenhum jogo encontrado para gerar a imagem.');
+        return;
+    }
+    
+    const container = document.createElement('div');
+    container.style.cssText = `
+        position: absolute;
+        left: -9999px;
+        width: 1080px;
+        height: 1920px;
+        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e1b4b 100%);
+        padding: 80px 60px;
+        box-sizing: border-box;
+        font-family: 'Bebas Neue', sans-serif;
+        color: #ffffff;
+        overflow-y: auto;
+    `;
+    
+    const title = document.createElement('div');
+    title.style.cssText = `
+        text-align: center;
+        margin-bottom: 60px;
+        font-size: 72px;
+        font-weight: bold;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        color: #8b5cf6;
+        text-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+    `;
+    title.textContent = 'ALTERNATIVEFINALS';
+    container.appendChild(title);
+    
+    const gamesContainer = document.createElement('div');
+    gamesContainer.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        gap: 40px;
+    `;
+    
+    filteredGames.forEach((game, index) => {
+        const card = document.createElement('div');
+        card.style.cssText = `
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        `;
+        
+        let confrontoValue = '';
+        let placarValue = '';
+        let faseValue = '';
+        let dataValue = '';
+        let horarioValue = '';
+        let quadraValue = '';
+        
+        if (globalHeaders && globalHeaders.length > 0) {
+            let placarVivoFound = false;
+            
+            globalHeaders.forEach(header => {
+                if (!header) return;
+                const headerLower = header.toLowerCase().trim();
+                const value = game[header] ? String(game[header]).trim() : '';
+                
+                if (headerLower.includes('confronto')) {
+                    confrontoValue = value;
+                } else if (headerLower.includes('placar') && headerLower.includes('vivo')) {
+                    if (value && value !== '' && value !== '-') {
+                        placarValue = value;
+                        placarVivoFound = true;
+                    }
+                } else if (headerLower.includes('fase')) {
+                    faseValue = value;
+                } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
+                    dataValue = value;
+                } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
+                    horarioValue = value;
+                } else if (headerLower.includes('quadra')) {
+                    quadraValue = value;
+                }
+            });
+            
+            if (!placarVivoFound) {
+                globalHeaders.forEach(header => {
+                    if (!header) return;
+                    const headerLower = header.toLowerCase().trim();
+                    const value = game[header] ? String(game[header]).trim() : '';
+                    
+                    if (headerLower.includes('placar') && !headerLower.includes('vivo')) {
+                        if (value && value !== '' && value !== '-') {
+                            placarValue = value;
+                        }
+                    }
+                });
+            }
+        }
+        
+        const winner = extractWinner(confrontoValue, placarValue);
+        const hasPlacar = placarValue && placarValue !== '' && placarValue !== '-';
+        
+        const confrontoDiv = document.createElement('div');
+        confrontoDiv.style.cssText = `
+            font-size: 42px;
+            font-weight: normal;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        `;
+        
+        if (confrontoValue) {
+            const parts = confrontoValue.split(' vs ');
+            if (parts.length === 2) {
+                const team1 = parts[0].trim();
+                const team2 = parts[1].trim();
+                
+                const team1Span = document.createElement('span');
+                team1Span.textContent = team1;
+                if (hasPlacar && winner && team1 === winner) {
+                    team1Span.style.color = '#10b981';
+                    team1Span.style.fontWeight = 'bold';
+                } else {
+                    team1Span.style.color = '#ffffff';
+                    team1Span.style.fontWeight = 'normal';
+                }
+                confrontoDiv.appendChild(team1Span);
+                
+                const vsSpan = document.createElement('span');
+                vsSpan.textContent = ' vs ';
+                vsSpan.style.color = '#a5b4fc';
+                confrontoDiv.appendChild(vsSpan);
+                
+                const team2Span = document.createElement('span');
+                team2Span.textContent = team2;
+                if (hasPlacar && winner && team2 === winner) {
+                    team2Span.style.color = '#10b981';
+                    team2Span.style.fontWeight = 'bold';
+                } else {
+                    team2Span.style.color = '#ffffff';
+                    team2Span.style.fontWeight = 'normal';
+                }
+                confrontoDiv.appendChild(team2Span);
+            } else {
+                confrontoDiv.textContent = confrontoValue;
+            }
+        } else {
+            confrontoDiv.textContent = '-';
+        }
+        
+        card.appendChild(confrontoDiv);
+        
+        if (placarValue) {
+            const placarDiv = document.createElement('div');
+            placarDiv.style.cssText = `
+                font-size: 36px;
+                color: #10b981;
+                font-weight: bold;
+                margin-bottom: 15px;
+            `;
+            placarDiv.textContent = `Placar: ${placarValue}`;
+            card.appendChild(placarDiv);
+        }
+        
+        const infoDiv = document.createElement('div');
+        infoDiv.style.cssText = `
+            font-size: 28px;
+            color: #cbd5e1;
+            line-height: 1.6;
+            font-family: 'JetBrains Mono', monospace;
+        `;
+        
+        const infoParts = [];
+        if (faseValue) infoParts.push(`Fase: ${faseValue}`);
+        if (dataValue) infoParts.push(`Data: ${dataValue}`);
+        if (horarioValue) infoParts.push(`Horário: ${horarioValue}`);
+        if (quadraValue) infoParts.push(`Quadra: ${quadraValue}`);
+        
+        infoDiv.textContent = infoParts.join(' • ');
+        card.appendChild(infoDiv);
+        
+        gamesContainer.appendChild(card);
+    });
+    
+    container.appendChild(gamesContainer);
+    document.body.appendChild(container);
+    
+    try {
+        const canvas = await html2canvas(container, {
+            width: 1080,
+            height: 1920,
+            scale: 2,
+            backgroundColor: null,
+            useCORS: true,
+            logging: false
+        });
+        
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        link.download = `jogos_${timestamp}.png`;
+        link.href = dataUrl;
+        link.click();
+        
+        document.body.removeChild(container);
+    } catch (error) {
+        document.body.removeChild(container);
+        alert('Erro ao gerar imagem: ' + error.message);
+    }
+}
+
 // Função para mostrar modal de autenticação
 function showAuthModal() {
     const overlay = document.createElement('div');
