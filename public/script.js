@@ -575,7 +575,7 @@ function getOrderedHeaders() {
     return orderedHeaders;
 }
 
-// Função para renderizar tabela
+// Função para renderizar tabela (otimizado com DocumentFragment)
 function renderTable(data) {
     const tableHeader = document.getElementById('tableHeader');
     const tableBody = document.getElementById('tableBody');
@@ -584,11 +584,13 @@ function renderTable(data) {
         return;
     }
     
+    // Limpa conteúdo anterior
     tableHeader.innerHTML = '';
     tableBody.innerHTML = '';
     
     const orderedHeaders = getOrderedHeaders();
     
+    // Cria header
     const headerRow = document.createElement('tr');
     orderedHeaders.forEach(header => {
         const th = document.createElement('th');
@@ -598,6 +600,9 @@ function renderTable(data) {
     tableHeader.appendChild(headerRow);
     
     if (data && data.length > 0) {
+        // Usa DocumentFragment para batch insertion (melhor performance)
+        const fragment = document.createDocumentFragment();
+        
         data.forEach((row, index) => {
             const tr = document.createElement('tr');
             tr.style.animationDelay = `${index * 0.02}s`;
@@ -646,12 +651,15 @@ function renderTable(data) {
                 tr.appendChild(td);
             });
             
-            tableBody.appendChild(tr);
+            fragment.appendChild(tr);
         });
+        
+        // Append tudo de uma vez (1 reflow ao invés de N)
+        tableBody.appendChild(fragment);
     }
 }
 
-// Função para renderizar cards
+// Função para renderizar cards (otimizado com DocumentFragment)
 function renderCards(data) {
     const cardsContainer = document.getElementById('cardsContainer');
     
@@ -664,6 +672,9 @@ function renderCards(data) {
     const orderedHeaders = getOrderedHeaders();
     
     if (data && data.length > 0) {
+        // Usa DocumentFragment para batch insertion (melhor performance)
+        const fragment = document.createDocumentFragment();
+        
         data.forEach((row, index) => {
             const card = document.createElement('div');
             card.className = 'data-card';
@@ -710,8 +721,11 @@ function renderCards(data) {
                 card.appendChild(field);
             });
             
-            cardsContainer.appendChild(card);
+            fragment.appendChild(card);
         });
+        
+        // Append tudo de uma vez (1 reflow ao invés de N)
+        cardsContainer.appendChild(fragment);
     }
 }
 

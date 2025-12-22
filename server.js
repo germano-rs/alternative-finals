@@ -16,6 +16,52 @@ const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32
 
 const activeTokens = new Set();
 
+// Rate limiting simples em memória (para ambiente de produção, considere usar Redis)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minuto
+const RATE_LIMIT_MAX_REQUESTS = 60; // 60 requisições por minuto
+
+function rateLimiter(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    
+    if (!rateLimitMap.has(ip)) {
+        rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+        return next();
+    }
+    
+    const limitData = rateLimitMap.get(ip);
+    
+    // Reseta contador se janela expirou
+    if (now > limitData.resetTime) {
+        limitData.count = 1;
+        limitData.resetTime = now + RATE_LIMIT_WINDOW;
+        return next();
+    }
+    
+    // Verifica limite
+    if (limitData.count >= RATE_LIMIT_MAX_REQUESTS) {
+        return res.status(429).json({
+            success: false,
+            error: 'Too many requests. Please try again later.',
+            retryAfter: Math.ceil((limitData.resetTime - now) / 1000)
+        });
+    }
+    
+    limitData.count++;
+    next();
+}
+
+// Limpa rate limit map periodicamente para evitar memory leak
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, data] of rateLimitMap.entries()) {
+        if (now > data.resetTime) {
+            rateLimitMap.delete(ip);
+        }
+    }
+}, RATE_LIMIT_WINDOW);
+
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
 }
@@ -52,6 +98,9 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
+
+// Aplica rate limiting a todas as rotas de API
+app.use('/api', rateLimiter);
 
 // Configuração da API do Google Sheets
 const SPREADSHEET_ID = '1HdIWJt0fcZf_SFo16wawpkQ3NwiAnxs4fvkp9FYdZjQ';
