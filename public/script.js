@@ -16,14 +16,20 @@ let placarFilter = 'all';
 let filterCache = {
     lastSearchTerm: null,
     lastFilters: null,
-    lastResult: null
+    lastResult: null,
+    dataVersion: 0  // Versão dos dados para detectar mudanças
 };
 
 // Cache para mapeamento de headers (evita processamento repetido)
 let headerCache = {
     orderedHeaders: null,
-    headersVersion: 0
+    headersKey: null  // Usa conteúdo dos headers como chave
 };
+
+// Função auxiliar para criar chave de headers
+function getHeadersKey(headers) {
+    return headers ? headers.join('|') : '';
+}
 
 // Função principal para carregar dados
 async function loadData(showLoadingIndicator = true) {
@@ -52,8 +58,9 @@ async function loadData(showLoadingIndicator = true) {
             if (dataChanged) {
                 filterCache.lastFilters = null;
                 filterCache.lastResult = null;
+                filterCache.dataVersion++;  // Incrementa versão dos dados
                 headerCache.orderedHeaders = null;
-                headerCache.headersVersion = 0;
+                headerCache.headersKey = null;
             }
             
             updateStatistics();
@@ -257,7 +264,8 @@ function renderData() {
     const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase() : '';
     
     // Checa cache para evitar reprocessamento
-    const currentFilters = `${searchTerm}|${showOnlyLiveGames}|${dateFilter}|${placarFilter}`;
+    // Inclui dataVersion para detectar mudanças nos dados
+    const currentFilters = `${searchTerm}|${showOnlyLiveGames}|${dateFilter}|${placarFilter}|${filterCache.dataVersion}`;
     if (filterCache.lastFilters === currentFilters && filterCache.lastResult) {
         const filteredData = filterCache.lastResult;
         updateViews(filteredData);
@@ -553,8 +561,11 @@ function getOrderedHeaders() {
         return [];
     }
     
+    // Cria chave baseada no conteúdo dos headers
+    const currentHeadersKey = getHeadersKey(globalHeaders);
+    
     // Retorna cache se headers não mudaram
-    if (headerCache.orderedHeaders && headerCache.headersVersion === globalHeaders.length) {
+    if (headerCache.orderedHeaders && headerCache.headersKey === currentHeadersKey) {
         return headerCache.orderedHeaders;
     }
     
@@ -570,7 +581,7 @@ function getOrderedHeaders() {
     
     // Atualiza cache
     headerCache.orderedHeaders = orderedHeaders;
-    headerCache.headersVersion = globalHeaders.length;
+    headerCache.headersKey = currentHeadersKey;
     
     return orderedHeaders;
 }

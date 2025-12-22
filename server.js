@@ -115,9 +115,14 @@ let memoryCache = {
 
 // Cache para mapeamento de headers (evita processamento repetido)
 let headerMappingCache = {
-    headers: null,
+    headersKey: null,
     mapping: null
 };
+
+// Função para criar chave de headers (evita comparação de arrays)
+function getHeadersKey(headers) {
+    return headers ? headers.join('|') : '';
+}
 
 // Função para criar mapeamento otimizado de headers
 function createHeaderMapping(headers) {
@@ -125,8 +130,11 @@ function createHeaderMapping(headers) {
         return null;
     }
     
+    // Cria chave baseada no conteúdo dos headers
+    const headersKey = getHeadersKey(headers);
+    
     // Retorna cache se headers não mudaram
-    if (headerMappingCache.headers === headers) {
+    if (headerMappingCache.headersKey === headersKey) {
         return headerMappingCache.mapping;
     }
     
@@ -154,7 +162,7 @@ function createHeaderMapping(headers) {
     });
     
     // Atualiza cache
-    headerMappingCache.headers = headers;
+    headerMappingCache.headersKey = headersKey;
     headerMappingCache.mapping = mapping;
     
     return mapping;
