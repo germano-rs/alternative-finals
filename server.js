@@ -64,6 +64,53 @@ let memoryCache = {
     maxAge: 5000 // 5 segundos de cache em memória
 };
 
+// Cache para mapeamento de headers (evita processamento repetido)
+let headerMappingCache = {
+    headers: null,
+    mapping: null
+};
+
+// Função para criar mapeamento otimizado de headers
+function createHeaderMapping(headers) {
+    if (!headers || headers.length === 0) {
+        return null;
+    }
+    
+    // Retorna cache se headers não mudaram
+    if (headerMappingCache.headers === headers) {
+        return headerMappingCache.mapping;
+    }
+    
+    const mapping = {};
+    headers.forEach((header, index) => {
+        const headerLower = header ? header.toLowerCase().trim() : '';
+        
+        if (headerLower.includes('fase')) {
+            mapping.fase = index;
+        } else if (headerLower.includes('jogo') && !headerLower.includes('jogador')) {
+            mapping.jogo = index;
+        } else if (headerLower.includes('confronto')) {
+            mapping.confronto = index;
+        } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
+            mapping.data = index;
+        } else if (headerLower.includes('dia')) {
+            mapping.dia = index;
+        } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
+            mapping.horario = index;
+        } else if (headerLower.includes('quadra')) {
+            mapping.quadra = index;
+        } else if (headerLower.includes('placar') && headerLower.includes('vivo')) {
+            mapping.placarVivo = index;
+        }
+    });
+    
+    // Atualiza cache
+    headerMappingCache.headers = headers;
+    headerMappingCache.mapping = mapping;
+    
+    return mapping;
+}
+
 // Função para inicializar autenticação
 function initializeAuth() {
     if (process.env.GOOGLE_CREDENTIALS) {
@@ -232,27 +279,17 @@ async function addGameToSheet(gameData) {
             auth: auth
         });
 
-        const values = headers.map(header => {
-            const headerLower = header ? header.toLowerCase().trim() : '';
-            
-            if (headerLower.includes('fase')) {
-                return gameData.fase || '';
-            } else if (headerLower.includes('jogo')) {
-                return gameData.jogo || '';
-            } else if (headerLower.includes('confronto')) {
-                return gameData.confronto || '';
-            } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
-                return gameData.data || '';
-            } else if (headerLower.includes('dia')) {
-                return gameData.dia || '';
-            } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
-                return gameData.horario || '';
-            } else if (headerLower.includes('quadra')) {
-                return gameData.quadra || '';
-            } else {
-                return '';
-            }
-        });
+        // Usa mapeamento cacheado para melhor performance
+        const mapping = createHeaderMapping(headers);
+        const values = new Array(headers.length).fill('');
+        
+        if (mapping.fase !== undefined) values[mapping.fase] = gameData.fase || '';
+        if (mapping.jogo !== undefined) values[mapping.jogo] = gameData.jogo || '';
+        if (mapping.confronto !== undefined) values[mapping.confronto] = gameData.confronto || '';
+        if (mapping.data !== undefined) values[mapping.data] = gameData.data || '';
+        if (mapping.dia !== undefined) values[mapping.dia] = gameData.dia || '';
+        if (mapping.horario !== undefined) values[mapping.horario] = gameData.horario || '';
+        if (mapping.quadra !== undefined) values[mapping.quadra] = gameData.quadra || '';
 
         const response = await sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
@@ -373,29 +410,18 @@ async function updateGameInSheet(rowIndex, gameData) {
             auth: auth
         });
 
-        const values = headers.map(header => {
-            const headerLower = header ? header.toLowerCase().trim() : '';
-            
-            if (headerLower.includes('fase')) {
-                return gameData.fase || '';
-            } else if (headerLower.includes('jogo')) {
-                return gameData.jogo || '';
-            } else if (headerLower.includes('confronto')) {
-                return gameData.confronto || '';
-            } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
-                return gameData.data || '';
-            } else if (headerLower.includes('dia')) {
-                return gameData.dia || '';
-            } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
-                return gameData.horario || '';
-            } else if (headerLower.includes('quadra')) {
-                return gameData.quadra || '';
-            } else if (headerLower.includes('placar') && headerLower.includes('vivo')) {
-                return gameData.placarVivo || '';
-            } else {
-                return '';
-            }
-        });
+        // Usa mapeamento cacheado para melhor performance
+        const mapping = createHeaderMapping(headers);
+        const values = new Array(headers.length).fill('');
+        
+        if (mapping.fase !== undefined) values[mapping.fase] = gameData.fase || '';
+        if (mapping.jogo !== undefined) values[mapping.jogo] = gameData.jogo || '';
+        if (mapping.confronto !== undefined) values[mapping.confronto] = gameData.confronto || '';
+        if (mapping.data !== undefined) values[mapping.data] = gameData.data || '';
+        if (mapping.dia !== undefined) values[mapping.dia] = gameData.dia || '';
+        if (mapping.horario !== undefined) values[mapping.horario] = gameData.horario || '';
+        if (mapping.quadra !== undefined) values[mapping.quadra] = gameData.quadra || '';
+        if (mapping.placarVivo !== undefined) values[mapping.placarVivo] = gameData.placarVivo || '';
 
         const range = `${rowIndex}:${rowIndex}`;
 
