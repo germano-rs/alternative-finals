@@ -16,6 +16,52 @@ const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32
 
 const activeTokens = new Set();
 
+// Rate limiting simples em memória (para ambiente de produção, considere usar Redis)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW = 60000; // 1 minuto
+const RATE_LIMIT_MAX_REQUESTS = 60; // 60 requisições por minuto
+
+function rateLimiter(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    
+    if (!rateLimitMap.has(ip)) {
+        rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
+        return next();
+    }
+    
+    const limitData = rateLimitMap.get(ip);
+    
+    // Reseta contador se janela expirou
+    if (now > limitData.resetTime) {
+        limitData.count = 1;
+        limitData.resetTime = now + RATE_LIMIT_WINDOW;
+        return next();
+    }
+    
+    // Verifica limite
+    if (limitData.count >= RATE_LIMIT_MAX_REQUESTS) {
+        return res.status(429).json({
+            success: false,
+            error: 'Too many requests. Please try again later.',
+            retryAfter: Math.ceil((limitData.resetTime - now) / 1000)
+        });
+    }
+    
+    limitData.count++;
+    next();
+}
+
+// Limpa rate limit map periodicamente para evitar memory leak
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, data] of rateLimitMap.entries()) {
+        if (now > data.resetTime) {
+            rateLimitMap.delete(ip);
+        }
+    }
+}, RATE_LIMIT_WINDOW);
+
 function generateToken() {
     return crypto.randomBytes(32).toString('hex');
 }
@@ -53,6 +99,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
+// Aplica rate limiting a todas as rotas de API
+app.use('/api', rateLimiter);
+
 // Configuração da API do Google Sheets
 const SPREADSHEET_ID = '1HdIWJt0fcZf_SFo16wawpkQ3NwiAnxs4fvkp9FYdZjQ';
 const RANGE = 'A:Z'; // Ajuste conforme necessário
@@ -63,6 +112,61 @@ let memoryCache = {
     timestamp: null,
     maxAge: 5000 // 5 segundos de cache em memória
 };
+
+// Cache para mapeamento de headers (evita processamento repetido)
+let headerMappingCache = {
+    headersKey: null,
+    mapping: null
+};
+
+// Função para criar chave de headers (evita comparação de arrays)
+function getHeadersKey(headers) {
+    return headers ? headers.join('|') : '';
+}
+
+// Função para criar mapeamento otimizado de headers
+function createHeaderMapping(headers) {
+    if (!headers || headers.length === 0) {
+        return null;
+    }
+    
+    // Cria chave baseada no conteúdo dos headers
+    const headersKey = getHeadersKey(headers);
+    
+    // Retorna cache se headers não mudaram
+    if (headerMappingCache.headersKey === headersKey) {
+        return headerMappingCache.mapping;
+    }
+    
+    const mapping = {};
+    headers.forEach((header, index) => {
+        const headerLower = header ? header.toLowerCase().trim() : '';
+        
+        if (headerLower.includes('fase')) {
+            mapping.fase = index;
+        } else if (headerLower.includes('jogo') && !headerLower.includes('jogador')) {
+            mapping.jogo = index;
+        } else if (headerLower.includes('confronto')) {
+            mapping.confronto = index;
+        } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
+            mapping.data = index;
+        } else if (headerLower.includes('dia')) {
+            mapping.dia = index;
+        } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
+            mapping.horario = index;
+        } else if (headerLower.includes('quadra')) {
+            mapping.quadra = index;
+        } else if (headerLower.includes('placar') && headerLower.includes('vivo')) {
+            mapping.placarVivo = index;
+        }
+    });
+    
+    // Atualiza cache
+    headerMappingCache.headersKey = headersKey;
+    headerMappingCache.mapping = mapping;
+    
+    return mapping;
+}
 
 // Função para inicializar autenticação
 function initializeAuth() {
@@ -232,27 +336,17 @@ async function addGameToSheet(gameData) {
             auth: auth
         });
 
-        const values = headers.map(header => {
-            const headerLower = header ? header.toLowerCase().trim() : '';
-            
-            if (headerLower.includes('fase')) {
-                return gameData.fase || '';
-            } else if (headerLower.includes('jogo')) {
-                return gameData.jogo || '';
-            } else if (headerLower.includes('confronto')) {
-                return gameData.confronto || '';
-            } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
-                return gameData.data || '';
-            } else if (headerLower.includes('dia')) {
-                return gameData.dia || '';
-            } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
-                return gameData.horario || '';
-            } else if (headerLower.includes('quadra')) {
-                return gameData.quadra || '';
-            } else {
-                return '';
-            }
-        });
+        // Usa mapeamento cacheado para melhor performance
+        const mapping = createHeaderMapping(headers);
+        const values = new Array(headers.length).fill('');
+        
+        if (mapping.fase !== undefined) values[mapping.fase] = gameData.fase || '';
+        if (mapping.jogo !== undefined) values[mapping.jogo] = gameData.jogo || '';
+        if (mapping.confronto !== undefined) values[mapping.confronto] = gameData.confronto || '';
+        if (mapping.data !== undefined) values[mapping.data] = gameData.data || '';
+        if (mapping.dia !== undefined) values[mapping.dia] = gameData.dia || '';
+        if (mapping.horario !== undefined) values[mapping.horario] = gameData.horario || '';
+        if (mapping.quadra !== undefined) values[mapping.quadra] = gameData.quadra || '';
 
         const response = await sheets.spreadsheets.values.append({
             spreadsheetId: SPREADSHEET_ID,
@@ -373,29 +467,18 @@ async function updateGameInSheet(rowIndex, gameData) {
             auth: auth
         });
 
-        const values = headers.map(header => {
-            const headerLower = header ? header.toLowerCase().trim() : '';
-            
-            if (headerLower.includes('fase')) {
-                return gameData.fase || '';
-            } else if (headerLower.includes('jogo')) {
-                return gameData.jogo || '';
-            } else if (headerLower.includes('confronto')) {
-                return gameData.confronto || '';
-            } else if (headerLower.includes('data') && !headerLower.includes('hora')) {
-                return gameData.data || '';
-            } else if (headerLower.includes('dia')) {
-                return gameData.dia || '';
-            } else if (headerLower.includes('horário') || headerLower.includes('horario')) {
-                return gameData.horario || '';
-            } else if (headerLower.includes('quadra')) {
-                return gameData.quadra || '';
-            } else if (headerLower.includes('placar') && headerLower.includes('vivo')) {
-                return gameData.placarVivo || '';
-            } else {
-                return '';
-            }
-        });
+        // Usa mapeamento cacheado para melhor performance
+        const mapping = createHeaderMapping(headers);
+        const values = new Array(headers.length).fill('');
+        
+        if (mapping.fase !== undefined) values[mapping.fase] = gameData.fase || '';
+        if (mapping.jogo !== undefined) values[mapping.jogo] = gameData.jogo || '';
+        if (mapping.confronto !== undefined) values[mapping.confronto] = gameData.confronto || '';
+        if (mapping.data !== undefined) values[mapping.data] = gameData.data || '';
+        if (mapping.dia !== undefined) values[mapping.dia] = gameData.dia || '';
+        if (mapping.horario !== undefined) values[mapping.horario] = gameData.horario || '';
+        if (mapping.quadra !== undefined) values[mapping.quadra] = gameData.quadra || '';
+        if (mapping.placarVivo !== undefined) values[mapping.placarVivo] = gameData.placarVivo || '';
 
         const range = `${rowIndex}:${rowIndex}`;
 

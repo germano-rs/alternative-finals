@@ -12,6 +12,25 @@ let showOnlyLiveGames = false;
 let dateFilter = 'all';
 let placarFilter = 'all';
 
+// Cache para otimizar operações repetidas
+let filterCache = {
+    lastSearchTerm: null,
+    lastFilters: null,
+    lastResult: null,
+    dataVersion: 0  // Versão dos dados para detectar mudanças
+};
+
+// Cache para mapeamento de headers (evita processamento repetido)
+let headerCache = {
+    orderedHeaders: null,
+    headersKey: null  // Usa conteúdo dos headers como chave
+};
+
+// Função auxiliar para criar chave de headers
+function getHeadersKey(headers) {
+    return headers ? headers.join('|') : '';
+}
+
 // Função principal para carregar dados
 async function loadData(showLoadingIndicator = true) {
     if (showLoadingIndicator) {
@@ -34,6 +53,15 @@ async function loadData(showLoadingIndicator = true) {
             
             globalData = result.data;
             globalHeaders = result.headers;
+            
+            // Invalida caches quando dados mudam
+            if (dataChanged) {
+                filterCache.lastFilters = null;
+                filterCache.lastResult = null;
+                filterCache.dataVersion++;  // Incrementa versão dos dados
+                headerCache.orderedHeaders = null;
+                headerCache.headersKey = null;
+            }
             
             updateStatistics();
             renderData();
@@ -234,20 +262,131 @@ function renderData() {
     
     const searchInput = document.getElementById('searchInput');
     const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase() : '';
-    let filteredData = filterData(searchTerm);
     
-    if (showOnlyLiveGames) {
-        filteredData = filterLiveGames(filteredData);
+    // Checa cache para evitar reprocessamento
+    // Inclui dataVersion para detectar mudanças nos dados
+    const currentFilters = `${searchTerm}|${showOnlyLiveGames}|${dateFilter}|${placarFilter}|${filterCache.dataVersion}`;
+    if (filterCache.lastFilters === currentFilters && filterCache.lastResult) {
+        const filteredData = filterCache.lastResult;
+        updateViews(filteredData);
+        return;
     }
     
+    // Aplica todos os filtros em uma única passagem
+    let filteredData = applyAllFilters(searchTerm);
+    
+    // Atualiza cache
+    filterCache.lastFilters = currentFilters;
+    filterCache.lastResult = filteredData;
+    
+    updateViews(filteredData);
+}
+
+// Otimiza filtros para aplicar todos em uma única iteração
+function applyAllFilters(searchTerm) {
+    if (!globalData || globalData.length === 0) {
+        return [];
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let endDate = null;
+    
+    // Pre-calcula datas se necessário
     if (dateFilter !== 'all') {
-        filteredData = filterByDate(filteredData, dateFilter);
+        endDate = new Date(today);
+        switch(dateFilter) {
+            case 'today':
+                endDate.setDate(endDate.getDate() + 1);
+                break;
+            case 'next3days':
+                endDate.setDate(endDate.getDate() + 3);
+                break;
+            case 'next7days':
+                endDate.setDate(endDate.getDate() + 7);
+                break;
+        }
     }
     
-    if (placarFilter !== 'all') {
-        filteredData = filterByPlacar(filteredData, placarFilter);
-    }
-    
+    return globalData.filter(row => {
+        if (!row) return false;
+        
+        // Filtro de busca (se houver)
+        if (searchTerm) {
+            const hasMatch = Object.values(row).some(value => 
+                value !== null && value !== undefined && String(value).toLowerCase().includes(searchTerm)
+            );
+            if (!hasMatch) return false;
+        }
+        
+        // Filtro de jogos ao vivo
+        if (showOnlyLiveGames) {
+            let hasLivePlacar = false;
+            for (const key in row) {
+                const keyLower = key ? key.toLowerCase().trim() : '';
+                if (keyLower.includes('placar') && keyLower.includes('vivo')) {
+                    const value = row[key];
+                    if (value && String(value).trim() !== '' && String(value).trim() !== '-') {
+                        hasLivePlacar = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasLivePlacar) return false;
+        }
+        
+        // Filtro de data
+        if (dateFilter !== 'all' && endDate) {
+            let matchesDate = false;
+            for (const key in row) {
+                const keyLower = key ? key.toLowerCase().trim() : '';
+                if (keyLower.includes('data') && !keyLower.includes('hora')) {
+                    const dateValue = row[key];
+                    if (dateValue && String(dateValue).trim() !== '') {
+                        const gameDate = parseDate(String(dateValue).trim());
+                        if (gameDate) {
+                            gameDate.setHours(0, 0, 0, 0);
+                            if (dateFilter === 'today') {
+                                matchesDate = gameDate.getTime() === today.getTime();
+                            } else {
+                                matchesDate = gameDate >= today && gameDate < endDate;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            if (!matchesDate) return false;
+        }
+        
+        // Filtro de placar
+        if (placarFilter !== 'all') {
+            let hasPlacar = false;
+            let hasPlacarVivo = false;
+            
+            for (const key in row) {
+                const keyLower = key ? key.toLowerCase().trim() : '';
+                const value = row[key];
+                const valueStr = value ? String(value).trim() : '';
+                
+                if (keyLower.includes('placar') && !keyLower.includes('vivo')) {
+                    hasPlacar = valueStr !== '' && valueStr !== '-';
+                } else if (keyLower.includes('placar') && keyLower.includes('vivo')) {
+                    hasPlacarVivo = valueStr !== '' && valueStr !== '-';
+                }
+            }
+            
+            const hasAnyPlacar = hasPlacar || hasPlacarVivo;
+            if (placarFilter === 'with' && !hasAnyPlacar) return false;
+            if (placarFilter === 'without' && hasAnyPlacar) return false;
+        }
+        
+        return true;
+    });
+}
+
+// Função auxiliar para atualizar views
+function updateViews(filteredData) {
     const tableView = document.getElementById('tableView');
     const cardsView = document.getElementById('cardsView');
     const loadingContainer = document.getElementById('loadingContainer');
@@ -279,29 +418,6 @@ function renderData() {
     }
 }
 
-// Função para filtrar apenas jogos ao vivo
-function filterLiveGames(data) {
-    if (!data || data.length === 0) {
-        return [];
-    }
-    
-    return data.filter(row => {
-        if (!row) {
-            return false;
-        }
-        
-        for (const key in row) {
-            const keyLower = key ? key.toLowerCase().trim() : '';
-            if (keyLower.includes('placar') && keyLower.includes('vivo')) {
-                const value = row[key];
-                return value && String(value).trim() !== '' && String(value).trim() !== '-';
-            }
-        }
-        
-        return false;
-    });
-}
-
 // Função para alternar filtro de jogos ao vivo
 function toggleLiveFilter() {
     showOnlyLiveGames = !showOnlyLiveGames;
@@ -315,114 +431,42 @@ function toggleLiveFilter() {
         }
     }
     
+    // Invalida cache
+    filterCache.lastFilters = null;
     renderData();
 }
 
-// Função para filtrar jogos por data
-function filterByDate(data, filterType) {
-    if (!data || data.length === 0) {
-        return [];
-    }
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    let endDate = new Date();
-    
-    switch(filterType) {
-        case 'today':
-            endDate = new Date(today);
-            endDate.setDate(endDate.getDate() + 1);
-            break;
-        case 'next3days':
-            endDate = new Date(today);
-            endDate.setDate(endDate.getDate() + 3);
-            break;
-        case 'next7days':
-            endDate = new Date(today);
-            endDate.setDate(endDate.getDate() + 7);
-            break;
-        default:
-            return data;
-    }
-    
-    return data.filter(row => {
-        if (!row) {
-            return false;
-        }
-        
-        for (const key in row) {
-            const keyLower = key ? key.toLowerCase().trim() : '';
-            if (keyLower.includes('data') && !keyLower.includes('hora')) {
-                const dateValue = row[key];
-                if (!dateValue || String(dateValue).trim() === '') {
-                    return false;
-                }
-                
-                const gameDate = parseDate(String(dateValue).trim());
-                if (!gameDate) {
-                    return false;
-                }
-                
-                gameDate.setHours(0, 0, 0, 0);
-                
-                if (filterType === 'today') {
-                    return gameDate.getTime() === today.getTime();
-                } else {
-                    return gameDate >= today && gameDate < endDate;
-                }
-            }
-        }
-        
-        return false;
-    });
-}
-
-// Função para fazer parse de data em diferentes formatos
+// Função para fazer parse de data em diferentes formatos (otimizado)
 function parseDate(dateString) {
     if (!dateString) {
         return null;
     }
     
-    const formats = [
-        /^(\d{2})\/(\d{2})\/(\d{2,4})$/,  // DD/MM/YY ou DD/MM/YYYY
-        /^(\d{4})-(\d{2})-(\d{2})$/,      // YYYY-MM-DD
-        /^(\d{2})-(\d{2})-(\d{4})$/,      // DD-MM-YYYY
-    ];
-    
-    for (const format of formats) {
-        const match = dateString.match(format);
-        if (match) {
-            if (format === formats[0]) {
-                const day = parseInt(match[1], 10);
-                const month = parseInt(match[2], 10) - 1;
-                let year = parseInt(match[3], 10);
-                
-                if (year < 100) {
-                    year += 2000;
-                }
-                
-                return new Date(year, month, day);
-            } else if (format === formats[1]) {
-                const year = parseInt(match[1], 10);
-                const month = parseInt(match[2], 10) - 1;
-                const day = parseInt(match[3], 10);
-                return new Date(year, month, day);
-            } else if (format === formats[2]) {
-                const day = parseInt(match[1], 10);
-                const month = parseInt(match[2], 10) - 1;
-                const year = parseInt(match[3], 10);
-                return new Date(year, month, day);
-            }
-        }
+    // Tenta formato DD/MM/YY ou DD/MM/YYYY
+    let match = dateString.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+    if (match) {
+        const day = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10) - 1;
+        let year = parseInt(match[3], 10);
+        if (year < 100) year += 2000;
+        return new Date(year, month, day);
     }
     
+    // Tenta formato YYYY-MM-DD
+    match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+        return new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+    }
+    
+    // Tenta formato DD-MM-YYYY
+    match = dateString.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (match) {
+        return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
+    }
+    
+    // Fallback para Date parser nativo
     const parsed = new Date(dateString);
-    if (!isNaN(parsed.getTime())) {
-        return parsed;
-    }
-    
-    return null;
+    return !isNaN(parsed.getTime()) ? parsed : null;
 }
 
 // Função para aplicar filtro de data
@@ -430,46 +474,10 @@ function applyDateFilter() {
     const dateFilterSelect = document.getElementById('dateFilterSelect');
     if (dateFilterSelect) {
         dateFilter = dateFilterSelect.value;
+        // Invalida cache
+        filterCache.lastFilters = null;
         renderData();
     }
-}
-
-// Função para filtrar jogos por placar
-function filterByPlacar(data, filterType) {
-    if (!data || data.length === 0) {
-        return [];
-    }
-    
-    return data.filter(row => {
-        if (!row) {
-            return false;
-        }
-        
-        let hasPlacar = false;
-        let hasPlacarVivo = false;
-        
-        for (const key in row) {
-            const keyLower = key ? key.toLowerCase().trim() : '';
-            const value = row[key];
-            const valueStr = value ? String(value).trim() : '';
-            
-            if (keyLower.includes('placar') && !keyLower.includes('vivo')) {
-                hasPlacar = valueStr !== '' && valueStr !== '-';
-            } else if (keyLower.includes('placar') && keyLower.includes('vivo')) {
-                hasPlacarVivo = valueStr !== '' && valueStr !== '-';
-            }
-        }
-        
-        const hasAnyPlacar = hasPlacar || hasPlacarVivo;
-        
-        if (filterType === 'with') {
-            return hasAnyPlacar;
-        } else if (filterType === 'without') {
-            return !hasAnyPlacar;
-        }
-        
-        return true;
-    });
 }
 
 // Função para aplicar filtro de placar
@@ -477,6 +485,8 @@ function applyPlacarFilter() {
     const placarFilterSelect = document.getElementById('placarFilterSelect');
     if (placarFilterSelect) {
         placarFilter = placarFilterSelect.value;
+        // Invalida cache
+        filterCache.lastFilters = null;
         renderData();
     }
 }
@@ -507,6 +517,8 @@ function clearAllFilters() {
         placarFilterSelect.value = 'all';
     }
     
+    // Invalida cache
+    filterCache.lastFilters = null;
     renderData();
 }
 
@@ -543,29 +555,18 @@ function findRealRowIndex(rowData) {
 }
 
 // Função para filtrar dados
-function filterData(searchTerm) {
-    if (!globalData || globalData.length === 0) {
-        return [];
-    }
-    
-    if (!searchTerm) {
-        return globalData;
-    }
-    
-    return globalData.filter(row => {
-        if (!row) {
-            return false;
-        }
-        return Object.values(row).some(value => 
-            value !== null && value !== undefined && String(value).toLowerCase().includes(searchTerm)
-        );
-    });
-}
-
-// Função para ordenar headers garantindo que "Placar ao Vivo" fique ao lado de "Placar"
+// Função para ordenar headers garantindo que "Placar ao Vivo" fique ao lado de "Placar" (otimizado com cache)
 function getOrderedHeaders() {
     if (!globalHeaders || globalHeaders.length === 0) {
         return [];
+    }
+    
+    // Cria chave baseada no conteúdo dos headers
+    const currentHeadersKey = getHeadersKey(globalHeaders);
+    
+    // Retorna cache se headers não mudaram
+    if (headerCache.orderedHeaders && headerCache.headersKey === currentHeadersKey) {
+        return headerCache.orderedHeaders;
     }
     
     const orderedHeaders = [...globalHeaders];
@@ -578,10 +579,14 @@ function getOrderedHeaders() {
         orderedHeaders.splice(placarIndex + 1, 0, placarVivo);
     }
     
+    // Atualiza cache
+    headerCache.orderedHeaders = orderedHeaders;
+    headerCache.headersKey = currentHeadersKey;
+    
     return orderedHeaders;
 }
 
-// Função para renderizar tabela
+// Função para renderizar tabela (otimizado com DocumentFragment)
 function renderTable(data) {
     const tableHeader = document.getElementById('tableHeader');
     const tableBody = document.getElementById('tableBody');
@@ -590,11 +595,13 @@ function renderTable(data) {
         return;
     }
     
+    // Limpa conteúdo anterior
     tableHeader.innerHTML = '';
     tableBody.innerHTML = '';
     
     const orderedHeaders = getOrderedHeaders();
     
+    // Cria header
     const headerRow = document.createElement('tr');
     orderedHeaders.forEach(header => {
         const th = document.createElement('th');
@@ -604,6 +611,9 @@ function renderTable(data) {
     tableHeader.appendChild(headerRow);
     
     if (data && data.length > 0) {
+        // Usa DocumentFragment para batch insertion (melhor performance)
+        const fragment = document.createDocumentFragment();
+        
         data.forEach((row, index) => {
             const tr = document.createElement('tr');
             tr.style.animationDelay = `${index * 0.02}s`;
@@ -652,12 +662,15 @@ function renderTable(data) {
                 tr.appendChild(td);
             });
             
-            tableBody.appendChild(tr);
+            fragment.appendChild(tr);
         });
+        
+        // Append tudo de uma vez (1 reflow ao invés de N)
+        tableBody.appendChild(fragment);
     }
 }
 
-// Função para renderizar cards
+// Função para renderizar cards (otimizado com DocumentFragment)
 function renderCards(data) {
     const cardsContainer = document.getElementById('cardsContainer');
     
@@ -670,6 +683,9 @@ function renderCards(data) {
     const orderedHeaders = getOrderedHeaders();
     
     if (data && data.length > 0) {
+        // Usa DocumentFragment para batch insertion (melhor performance)
+        const fragment = document.createDocumentFragment();
+        
         data.forEach((row, index) => {
             const card = document.createElement('div');
             card.className = 'data-card';
@@ -716,8 +732,11 @@ function renderCards(data) {
                 card.appendChild(field);
             });
             
-            cardsContainer.appendChild(card);
+            fragment.appendChild(card);
         });
+        
+        // Append tudo de uma vez (1 reflow ao invés de N)
+        cardsContainer.appendChild(fragment);
     }
 }
 
@@ -749,6 +768,7 @@ function printData() {
 }
 
 // Função para obter todos os jogos filtrados (sem limite)
+// Função para obter todos os jogos filtrados (sem limite) - reutiliza applyAllFilters
 function getAllFilteredGames() {
     if (!globalData || globalData.length === 0) {
         return [];
@@ -756,21 +776,9 @@ function getAllFilteredGames() {
     
     const searchInput = document.getElementById('searchInput');
     const searchTerm = searchInput && searchInput.value ? searchInput.value.toLowerCase() : '';
-    let filteredData = filterData(searchTerm);
     
-    if (showOnlyLiveGames) {
-        filteredData = filterLiveGames(filteredData);
-    }
-    
-    if (dateFilter !== 'all') {
-        filteredData = filterByDate(filteredData, dateFilter);
-    }
-    
-    if (placarFilter !== 'all') {
-        filteredData = filterByPlacar(filteredData, placarFilter);
-    }
-    
-    return filteredData;
+    // Reutiliza a função otimizada de filtro
+    return applyAllFilters(searchTerm);
 }
 
 // Função para obter jogos filtrados (máximo 5)
@@ -1742,8 +1750,10 @@ document.addEventListener('DOMContentLoaded', () => {
         searchInput.addEventListener('input', (e) => {
             clearTimeout(searchTimeout);
             searchTimeout = setTimeout(() => {
+                // Invalida cache antes de renderizar
+                filterCache.lastFilters = null;
                 renderData();
-            }, 300);
+            }, 300); // Debounce de 300ms para reduzir renders desnecessários
         });
     }
     
